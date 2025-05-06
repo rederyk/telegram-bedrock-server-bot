@@ -1,0 +1,14 @@
+---
+
+services:
+
+  bot:
+    build: .
+    container_name: telegram-mc-cmd
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - BOT_PASSWORD=${BOT_PASSWORD}
+    volumes:
+      - ./users.json:/app/users.json
+      - /var/run/docker.sock:/var/run/docker.sock
