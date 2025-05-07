@@ -5,6 +5,7 @@ import subprocess
 import asyncio  # Aggiunto per operazioni asincrone
 import requests
 import uuid
+import re # Importa re per saveloc
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -118,15 +119,10 @@ async def run_docker_command(command_args, read_output=False, timeout=15):
 
         decoded_stderr = stderr.decode().strip() if stderr else ""
         if decoded_stderr:
-            # Non registrare come errore se è l'output atteso di un comando (es. 'list' su Bedrock può scrivere su stderr)
-            # Tuttavia, per ora lo registriamo come errore per debug, potrebbe essere necessario affinarlo.
             logging.info(
                 f"Output stderr dal comando Docker '{' '.join(command_args)}': {decoded_stderr}")
 
         if process.returncode != 0:
-            # Alcuni comandi (es. 'list' su Bedrock con send-command) potrebbero restituire un codice diverso da 0
-            # ma comunque scrivere l'output corretto. Questo CalledProcessError potrebbe essere troppo aggressivo.
-            # Per ora lo manteniamo, ma potrebbe essere necessario un handling più specifico per certi comandi.
             logging.warning(
                 f"Comando Docker '{' '.join(command_args)}' ha restituito {process.returncode}. stderr: {decoded_stderr}")
             # Non sollevare eccezione per alcuni comandi che potrebbero comportarsi così
@@ -169,38 +165,25 @@ async def get_online_players():
             "Variabile CONTAINER non impostata, impossibile ottenere i giocatori online.")
         return []
     try:
-        # 1. Esegui il comando "list" per aggiornare i log con la lista dei giocatori
-        # Scegli il comando appropriato per il tuo server:
-        # "send-command list" per Bedrock Server
-        # "rcon-cli list" per server Java con rcon-cli configurato
         list_command_args = ["docker", "exec",
                              CONTAINER, "send-command", "list"]
-        # Se usi un server Java, potrebbe essere:
-        # list_command_args = ["docker", "exec", CONTAINER, "rcon-cli", "list"]
         logging.info(
             f"Esecuzione comando per aggiornare lista giocatori: {' '.join(list_command_args)}")
         try:
             await run_docker_command(list_command_args, read_output=False, timeout=5)
         except subprocess.CalledProcessError as e:
-            # Alcuni server/setup (es. Bedrock con send-command) potrebbero restituire un codice di errore
-            # anche se il comando ha funzionato e ha stampato sui log.
-            # Registriamo l'errore ma continuiamo, sperando che i log contengano l'info.
             logging.warning(
                 f"Comando '{' '.join(list_command_args)}' ha restituito un errore (codice {e.returncode}), ma si procede con la lettura dei log. Stderr: {e.stderr}")
         except asyncio.TimeoutError:
             logging.error(
                 f"Timeout durante l'esecuzione del comando '{' '.join(list_command_args)}'. Impossibile aggiornare la lista giocatori.")
-            # Se il comando list va in timeout, inutile leggere i log.
             return []
         except Exception as e:
             logging.error(
                 f"Errore imprevisto eseguendo '{' '.join(list_command_args)}': {e}. Si tenta comunque di leggere i log.")
 
-        # 2. Attendi un breve periodo per permettere ai log di aggiornarsi
-        # 1 secondo di attesa, potrebbe necessitare aggiustamenti
         await asyncio.sleep(1.0)
 
-        # 3. Leggi gli ultimi log per estrarre la lista dei giocatori
         logs_command_args = ["docker", "logs", "--tail", "100", CONTAINER]
         logging.info(f"Lettura log: {' '.join(logs_command_args)}")
         output = await run_docker_command(logs_command_args, read_output=True, timeout=5)
@@ -212,35 +195,24 @@ async def get_online_players():
         lines = output.splitlines()
         player_list = []
 
-        # Il parsing dei log cerca la tipica riga "There are ... players online:"
-        # e poi i nomi dei giocatori nella stessa riga o in quella successiva.
-        # Cerca dal fondo, più probabile trovare output recente
         for i in reversed(range(len(lines))):
             current_line_raw = lines[i]
             current_line_content = current_line_raw
 
-            # Rimuovi prefissi comuni dei log (es. timestamp, level)
-            # Questo aiuta a rendere il match del contenuto più affidabile
             if "]: " in current_line_content:
                 current_line_content = current_line_content.split("]: ", 1)[1]
-            # Formato alternativo es. [20:17:07 INFO]
             elif "] " in current_line_content:
                 current_line_content = current_line_content.split("] ", 1)[1]
 
             current_line_lower = current_line_content.lower()
 
-            # Pattern principale per identificare la riga con il conteggio dei giocatori
             if ("players online:" in current_line_lower and "there are" in current_line_lower) or \
-               ("players online:" in current_line_lower):  # Match più generico
+               ("players online:" in current_line_lower):
 
-                # Tentativo 1: Giocatori sulla stessa riga, dopo ":"
-                # Es. Java: "There are 1 of 20 players online: Player1"
-                # Es. Bedrock: "There are 1/20 players online: Player1" (a volte)
                 if ":" in current_line_content:
                     potential_players_str = current_line_content.split(":", 1)[
                         1].strip()
-                    if potential_players_str:  # Se c'è qualcosa dopo i due punti
-                        # Evita di interpretare erroneamente "Max players online: 20"
+                    if potential_players_str:
                         if "max players online" not in current_line_lower:
                             player_list = [p.strip() for p in potential_players_str.split(',') if p.strip(
                             ) and "no players online" not in p.lower() and "nessun giocatore connesso" not in p.lower()]
@@ -249,14 +221,10 @@ async def get_online_players():
                                     f"Giocatori online trovati (stessa riga): {player_list}")
                                 return player_list
 
-                # Tentativo 2: Giocatori sulla riga successiva
-                # Es. Bedrock:
-                #   Line i:   "There are 1/20 players online:"
-                #   Line i+1: "Player1, Player2"
                 if i + 1 < len(lines):
                     next_line_raw = lines[i+1]
                     next_line_content = next_line_raw
-                    if "]: " in next_line_content:  # Rimuovi prefisso log anche dalla riga successiva
+                    if "]: " in next_line_content:
                         next_line_content = next_line_content.split("]: ", 1)[
                             1]
                     elif "] " in next_line_content:
@@ -264,8 +232,6 @@ async def get_online_players():
 
                     next_line_content_stripped = next_line_content.strip()
 
-                    # Verifica che la riga successiva non sia un altro messaggio di log standard
-                    # e che contenga effettivamente qualcosa.
                     if next_line_content_stripped and not next_line_content_stripped.startswith("[") and " INFO" not in next_line_raw and " WARN" not in next_line_raw and " ERROR" not in next_line_raw:
                         if "no players online" not in next_line_content_stripped.lower() and "nessun giocatore connesso" not in next_line_content_stripped.lower():
                             player_list = [
@@ -274,28 +240,22 @@ async def get_online_players():
                                 logging.info(
                                     f"Giocatori online trovati (riga successiva): {player_list}")
                                 return player_list
-
-                # Se abbiamo trovato "players online:" ma nessuna delle condizioni sopra ha prodotto giocatori,
-                # significa che probabilmente non c'è nessuno online o il formato è inaspettato.
                 logging.info(
                     "Trovato 'players online:' ma nessun giocatore elencato o lista vuota.")
-                return []  # Restituisce lista vuota se il pattern è matchato ma non ci sono nomi
-
+                return []
         logging.info(
             "Pattern 'players online:' non trovato nei log recenti dopo il comando 'list'.")
-        return []  # Nessun pattern trovato
-
+        return []
     except asyncio.TimeoutError:
         logging.error(
             "Timeout ottenendo i giocatori online (fase lettura log).")
     except subprocess.CalledProcessError as e:
-        # Questo errore potrebbe arrivare dalla lettura dei log se fallisce
         logging.error(
             f"Errore comando Docker leggendo i log per get_online_players: {e.cmd} - {e.stderr or e.output or e}")
     except Exception as e:
         logging.error(
             f"Errore generico ottenendo giocatori online: {e}", exc_info=True)
-    return []  # Fallback finale
+    return []
 
 
 def auth_required(func):
@@ -318,10 +278,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Comandi:\n"
         "/login <password> - Autenticati\n"
         "/logout - Esci\n"
-        "/menu - Mostra comandi\n"
+        "/menu - Mostra menu azioni rapide\n"
+        "/give - Avvia il flusso per dare un oggetto\n"
+        "/tp - Avvia il flusso di teletrasporto\n"
+        "/weather - Avvia il flusso per cambiare meteo\n"
+        "/saveloc - Salva la tua posizione attuale\n"
+        "/edituser - Modifica username o cancella posizioni\n"
         "/cmd <comando_minecraft> - Esegui comando server (es. /cmd list)\n"
         "/logs - Mostra ultimi log del server\n"
-        "/scarica_items - Aggiorna lista oggetti Minecraft (da admin)\n"
+        "/scarica_items - Aggiorna lista oggetti Minecraft\n"
         "Puoi anche digitare @<nome_bot> + nome oggetto per suggerimenti inline."
     )
 
@@ -340,7 +305,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users[uid] = {"minecraft_username": None}
     save_users()
     await update.message.reply_text("Autenticazione avvenuta.")
-    if not users[uid].get("minecraft_username"):  # Chiedi username se non presente
+    if not users[uid].get("minecraft_username"):
         context.user_data["awaiting_mc_username"] = True
         await update.message.reply_text("Per favore, inserisci ora il tuo nome utente Minecraft:")
 
@@ -349,17 +314,10 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     authenticated.discard(uid)
-    # Non rimuoviamo l'utente dal file users, ma solo lo stato di autenticazione
-    # Se vuoi rimuovere completamente i dati dell'utente, decommenta le righe sotto
-    # if uid in users:
-    #     del users[uid]
-    #     save_users()
-    # await update.message.reply_text("Logout eseguito. I tuoi dati Minecraft sono stati rimossi.")
     await update.message.reply_text("Logout eseguito.")
 
 
 @auth_required
-# Rinominato per evitare conflitto con modulo 'logs'
 async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER:
         await update.message.reply_text("Variabile CONTAINER non impostata. Impossibile recuperare i log.")
@@ -370,7 +328,6 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         output = output or "(Nessun output dai log)"
         safe_output = output.replace("&", "&amp;").replace(
             "<", "&lt;").replace(">", "&gt;")
-        # Limita lunghezza messaggio
         msg = f"<b>Ultimi 50 log del server:</b>\n<pre>{safe_output[:3900]}</pre>"
         await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
     except asyncio.TimeoutError:
@@ -382,28 +339,31 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @auth_required
-# Rinominato per chiarezza
+async def edituser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = [
+        [InlineKeyboardButton("✏️ Modifica username", callback_data="edit_username")],
+        [InlineKeyboardButton("🗑️ Cancella posizione salvata", callback_data="delete_location")],
+    ]
+    await update.message.reply_text(
+        "Cosa vuoi fare?",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+
+@auth_required
 async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER:
         await update.message.reply_text("Variabile CONTAINER non impostata. Impossibile eseguire comandi.")
         return
-    command_text = " ".join(context.args).strip()  # Permette comandi con spazi
+    command_text = " ".join(context.args).strip()
     if not command_text:
         await update.message.reply_text("Specifica un comando da inviare al server. Esempio: /cmd list")
         return
     try:
-        # Scegli la strategia corretta per il tuo server:
-        # Per server Bedrock, "send-command" è comune.
-        # Per server Java, "rcon-cli" (o un altro client RCON) è necessario.
-        # Assicurati che il comando scelto sia disponibile e funzionante nel tuo container Docker.
         docker_command_args = ["docker", "exec", CONTAINER,
-                               "send-command", command_text]  # Esempio per Bedrock
-        # Oppure per Java con rcon-cli:
-        # docker_command_args = ["docker", "exec", CONTAINER, "rcon-cli", command_text]
-
+                               "send-command", command_text]
         logging.info(
             f"Esecuzione comando server: {' '.join(docker_command_args)}")
-        # read_output=False perché l'output va ai log del server
         await run_docker_command(docker_command_args, read_output=False, timeout=10)
         await update.message.reply_text(
             f"Comando '{command_text}' inviato al server.\n"
@@ -424,8 +384,6 @@ async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @auth_required
 async def scarica_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global ITEMS
-    # Esegui fetch_items in un thread separato per non bloccare l'event loop
-    # dato che requests è sincrono
     new_items = await asyncio.to_thread(fetch_items)
     if new_items:
         ITEMS = new_items
@@ -437,7 +395,12 @@ async def scarica_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @auth_required
 async def saveloc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    # chiedi il nome per la posizione
+    mc_username = users.get(uid, {}).get("minecraft_username")
+    if not mc_username:
+        context.user_data["awaiting_mc_username"] = True
+        await update.message.reply_text("Sembra che il tuo username Minecraft non sia impostato. Inseriscilo ora, poi riprova /saveloc:")
+        return
+
     context.user_data["awaiting_saveloc_name"] = True
     await update.message.reply_text("Inserisci un nome per la posizione che vuoi salvare:")
 
@@ -457,44 +420,127 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text("Scegli un'azione:", reply_markup=InlineKeyboardMarkup(kb))
 
+# --- NUOVI COMANDI DIRETTI ---
+@auth_required
+async def give_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not users.get(uid) or not users[uid].get("minecraft_username"):
+        context.user_data["awaiting_mc_username"] = True
+        await update.message.reply_text("Sembra che il tuo username Minecraft non sia impostato. Inseriscilo ora, poi potrai usare /give:")
+        return
+    # Simula la pressione del bottone "give"
+    context.user_data["awaiting_give_prefix"] = True
+    await update.message.reply_text("Ok, inviami il nome (o parte del nome/ID) dell'oggetto che vuoi dare:")
+
+@auth_required
+async def tp_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    minecraft_username = users.get(uid, {}).get("minecraft_username")
+    if not minecraft_username:
+        context.user_data["awaiting_mc_username"] = True
+        await update.message.reply_text("Sembra che il tuo username Minecraft non sia impostato. Inseriscilo ora, poi potrai usare /tp:")
+        return
+
+    # Logica copiata e adattata da button_handler, case "tp"
+    try:
+        online_players = await get_online_players()
+        buttons = []
+        if online_players:
+            buttons.extend([
+                InlineKeyboardButton(p, callback_data=f"tp_player:{p}")
+                for p in online_players
+            ])
+        buttons.append(InlineKeyboardButton("📍 Inserisci coordinate", callback_data="tp_coords"))
+        locs = users.get(uid, {}).get("locations", {})
+        for name, coords in locs.items():
+            buttons.append(
+                InlineKeyboardButton(f"📌 {name}", callback_data=f"tp_saved:{name}")
+            )
+        keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+        markup = InlineKeyboardMarkup(keyboard_layout)
+
+        text_reply = ""
+        if not online_players and not CONTAINER:
+            text_reply = ("Impossibile ottenere la lista giocatori "
+                          "(CONTAINER non settato o server non raggiungibile).\n"
+                          "Puoi usare le posizioni salvate o inserire coordinate manualmente.")
+        elif not online_players:
+            text_reply = ("Nessun giocatore online trovato.\n"
+                          "Puoi usare le posizioni salvate o inserire coordinate manualmente:")
+        else:
+            text_reply = ("Scegli un giocatore a cui teleportarti, usa una posizione salvata "
+                          "o inserisci coordinate:")
+        
+        await update.message.reply_text(text_reply, reply_markup=markup)
+
+    except Exception as e:
+        logging.error(f"Errore in /tp command: {e}", exc_info=True)
+        await update.message.reply_text("Si è verificato un errore durante la preparazione del menu di teletrasporto.")
+
+
+@auth_required
+async def weather_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not users.get(uid) or not users[uid].get("minecraft_username"):
+        context.user_data["awaiting_mc_username"] = True
+        await update.message.reply_text("Sembra che il tuo username Minecraft non sia impostato. Inseriscilo ora, poi potrai usare /weather:")
+        return
+    
+    # Logica copiata e adattata da button_handler, case "weather"
+    buttons = [
+        [InlineKeyboardButton(
+            "☀️ Sereno (Clear)", callback_data="weather_set:clear")],
+        [InlineKeyboardButton("🌧 Pioggia (Rain)",
+                              callback_data="weather_set:rain")],
+        [InlineKeyboardButton(
+            "⛈ Temporale (Thunder)", callback_data="weather_set:thunder")]
+    ]
+    await update.message.reply_text("Scegli le condizioni meteo:", reply_markup=InlineKeyboardMarkup(buttons))
+
+# --- FINE NUOVI COMANDI DIRETTI ---
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
 
-    # Ignora messaggi se non autenticato, tranne comandi specifici
     if not is_authenticated(uid):
         await update.message.reply_text("Devi prima effettuare il /login.")
         return
 
     mc_user_details = users.get(uid)
-    if not mc_user_details:  # Sicurezza extra, dovrebbe essere già gestito da auth_required e login
+    if not mc_user_details:
         await update.message.reply_text("Errore: utente non trovato. Prova a fare /logout e /login.")
         return
 
     if context.user_data.get("awaiting_mc_username"):
-        # TODO: Aggiungere validazione per username Minecraft se necessario
         users[uid]["minecraft_username"] = text
         save_users()
         context.user_data["awaiting_mc_username"] = False
         await update.message.reply_text(f"Username Minecraft '{text}' salvato.")
-        # Mostra il menu dopo aver salvato l'username
-        await menu(update, context)
+        # Non mostrare il menu automaticamente qui, l'utente potrebbe aver inserito l'username
+        # a seguito di un comando diretto (es. /give)
+        await update.message.reply_text("Ora puoi usare i comandi che richiedono l'username (es. /menu, /give, /tp).")
         return
 
     minecraft_username = mc_user_details.get("minecraft_username")
-    if not minecraft_username:
+    if not minecraft_username: # Dovrebbe essere già gestito sopra, ma per sicurezza
         context.user_data["awaiting_mc_username"] = True
         await update.message.reply_text("Per favore, inserisci prima il tuo username Minecraft:")
         return
 
-    # --- saving location flow ---
+    if context.user_data.get("awaiting_username_edit"):
+        new_name = update.message.text.strip()
+        users[uid]["minecraft_username"] = new_name
+        save_users()
+        context.user_data.pop("awaiting_username_edit")
+        await update.message.reply_text(f"Username aggiornato: {new_name}")
+        return
+
     if context.user_data.get("awaiting_saveloc_name"):
         location_name = update.message.text.strip()
         context.user_data.pop("awaiting_saveloc_name")
 
-        minecraft_username = users[uid]["minecraft_username"]
-        # 1) teletrasporto “invisibile” per forzare il log
+        # minecraft_username è già verificato e disponibile qui
         docker_cmd = [
             "docker", "exec", CONTAINER,
             "send-command",
@@ -502,29 +548,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         try:
             await run_docker_command(docker_cmd, read_output=False, timeout=10)
-            # 2) attendi un attimo che il log venga scritto
             await asyncio.sleep(1.0)
-            # 3) leggi gli ultimi 100 log
             log_args = ["docker", "logs", "--tail", "100", CONTAINER]
             output = await run_docker_command(log_args, read_output=True, timeout=5)
 
-            # 4) estrai con regex l’ultima riga “Teleported … to X, Y, Z”
-            import re
             pattern = rf"Teleported {re.escape(minecraft_username)} to ([0-9\.\-]+),\s*([0-9\.\-]+),\s*([0-9\.\-]+)"
             matches = re.findall(pattern, output)
             if not matches:
-                await update.message.reply_text("Impossibile trovare le coordinate nei log. Riprova più tardi.")
+                await update.message.reply_text("Impossibile trovare le coordinate nei log. Assicurati di essere in gioco e che i comandi siano abilitati. Riprova più tardi.")
                 return
-            x, y, z = matches[-1]  # prendi l’ultimo match
+            x, y, z = matches[-1]
 
-            # 5) salva in users.json
             users.setdefault(uid, {}).setdefault("locations", {})[location_name] = {
                 "x": float(x), "y": float(y), "z": float(z)
             }
             save_users()
             await update.message.reply_text(f"✅ Posizione '{location_name}' salvata: X={x}, Y={y}, Z={z}")
+        except asyncio.TimeoutError:
+             await update.message.reply_text("Timeout durante il salvataggio della posizione. Riprova.")
+        except subprocess.CalledProcessError as e:
+            await update.message.reply_text(f"Errore del server Minecraft durante il salvataggio: {e.stderr or e.output or e}. Potrebbe essere necessario abilitare i comandi o verificare l'username.")
         except Exception as e:
-            logging.error(f"Errore in /saveloc: {e}", exc_info=True)
+            logging.error(f"Errore in /saveloc (esecuzione comando): {e}", exc_info=True)
             await update.message.reply_text("Si è verificato un errore salvando la posizione.")
         return
 
@@ -534,16 +579,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         matches = [i for i in ITEMS if i["id"].lower().startswith(
             prefix) or i["name"].lower().startswith(prefix)]
         if not matches:
-            await update.message.reply_text("Nessun item trovato con quel prefisso. Riprova o /menu.")
+            await update.message.reply_text("Nessun item trovato con quel prefisso. Riprova, usa /menu o /give.")
         else:
             buttons = [
                 InlineKeyboardButton(
                     f'{i["name"]} ({i["id"]})', callback_data=f'give_item:{i["id"]}')
-                # Limita a 10 per non superare i limiti di Telegram
                 for i in matches[:10]
             ]
-            keyboard = [buttons[i:i+1]
-                        for i in range(len(buttons))]  # Un bottone per riga
+            keyboard = [buttons[j:j+1]
+                        for j in range(len(buttons))]
             await update.message.reply_text("Scegli un item:", reply_markup=InlineKeyboardMarkup(keyboard))
         context.user_data["awaiting_give_prefix"] = False
         state_handled = True
@@ -551,7 +595,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get("awaiting_item_quantity"):
         if not CONTAINER:
             await update.message.reply_text("Errore: CONTAINER non configurato per il comando give.")
-            state_handled = True  # Per uscire dal blocco
+            state_handled = True
             return
 
         try:
@@ -560,18 +604,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raise ValueError("La quantità deve essere positiva.")
             item_id = context.user_data.get("selected_item")
             if not item_id:
-                await update.message.reply_text("Errore interno: item non selezionato. Riprova da /menu.")
+                await update.message.reply_text("Errore interno: item non selezionato. Riprova da /menu o /give.")
                 context.user_data.pop(
-                    "awaiting_item_quantity", None)  # Pulisci stato
+                    "awaiting_item_quantity", None)
                 return
 
             cmd_text = f"give {minecraft_username} {item_id} {quantity}"
-            # Scegli la strategia corretta per il tuo server. Esempio per Bedrock:
             docker_cmd_args = ["docker", "exec",
                                CONTAINER, "send-command", cmd_text]
-            # Per Java con rcon-cli:
-            # docker_cmd_args = ["docker", "exec", CONTAINER, "rcon-cli", cmd_text]
-
             await run_docker_command(docker_cmd_args, read_output=False)
             await update.message.reply_text(f"Comando eseguito: /give {minecraft_username} {item_id} {quantity}")
         except ValueError:
@@ -590,27 +630,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get("awaiting_tp_coords"):
         if not CONTAINER:
             await update.message.reply_text("Errore: CONTAINER non configurato per il comando teleport.")
-            state_handled = True  # Per uscire dal blocco
+            state_handled = True
             return
 
         parts = text.split()
         if len(parts) != 3:
-            await update.message.reply_text("Formato coordinate non valido. Usa: x y z (es. 100 64 -200). Riprova o /menu.")
+            await update.message.reply_text("Formato coordinate non valido. Usa: x y z (es. 100 64 -200). Riprova o /menu, /tp.")
         else:
             try:
-                # Minecraft accetta decimali per le coordinate
                 x, y, z = map(float, parts)
                 cmd_text = f"tp {minecraft_username} {x} {y} {z}"
-                # Scegli la strategia corretta per il tuo server. Esempio per Bedrock:
                 docker_cmd_args = ["docker", "exec",
                                    CONTAINER, "send-command", cmd_text]
-                # Per Java con rcon-cli:
-                # docker_cmd_args = ["docker", "exec", CONTAINER, "rcon-cli", cmd_text]
-
                 await run_docker_command(docker_cmd_args, read_output=False)
                 await update.message.reply_text(f"Comando eseguito: /tp {minecraft_username} {x} {y} {z}")
             except ValueError:
-                await update.message.reply_text("Le coordinate devono essere numeri validi (es. 100 64.5 -200). Riprova o /menu.")
+                await update.message.reply_text("Le coordinate devono essere numeri validi (es. 100 64.5 -200). Riprova o /menu, /tp.")
             except asyncio.TimeoutError:
                 await update.message.reply_text(f"Timeout eseguendo il comando teleport.")
             except subprocess.CalledProcessError as e:
@@ -627,91 +662,120 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query.strip().lower()
-    if not query:  # Non mostrare risultati se la query è vuota
+    if not query:
         await update.inline_query.answer([], cache_time=10)
         return
-
-    # Solo utenti autenticati possono usare l'inline query?
-    # if not is_authenticated(update.inline_query.from_user.id):
-    #     # Potresti inviare un singolo risultato che dice "Autenticati prima"
-    #     # o semplicemente non rispondere. Per ora, aperto a tutti.
-    #     pass
 
     matches = [i for i in ITEMS if query in i["id"].lower()
                or query in i["name"].lower()]
     results = [
         InlineQueryResultArticle(
-            id=str(uuid.uuid4()),  # ID univoco per ogni risultato
+            id=str(uuid.uuid4()),
             title=f'{i["name"]}',
             description=f'ID: {i["id"]}',
             input_message_content=InputTextMessageContent(
-                f'/give {{USERNAME}} {i["id"]} 1')  # Esempio di comando
-            # Oppure solo l'ID: InputTextMessageContent(i["id"])
+                f'/give {{USERNAME}} {i["id"]} 1')
         )
-        for i in matches[:20]  # Limita il numero di risultati
+        for i in matches[:20]
     ]
-    # Cache per 1 minuto
     await update.inline_query.answer(results, cache_time=60)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Rispondi subito al callback per evitare timeout lato client
+    await query.answer()
     uid = query.from_user.id
 
-    # Verifica autenticazione e username Minecraft
     if not is_authenticated(uid) or not users.get(uid) or not users[uid].get("minecraft_username"):
         await query.edit_message_text("Errore: autenticazione o username Minecraft mancanti. Prova con /login e imposta l'username.")
         return
     minecraft_username = users[uid]["minecraft_username"]
-
     data = query.data
 
-    # Azioni che non richiedono subito CONTAINER
-    if not CONTAINER and data not in ["give", "tp", "weather"]:
-        # Per azioni che manipolano il server, CONTAINER è necessario
-        if data.startswith("give_item:") or data.startswith("tp_player:") or data == "tp_coords" or data.startswith("weather_set:"):
-            await query.edit_message_text("Errore: La variabile CONTAINER non è impostata nel bot. Impossibile eseguire questa azione.")
-            return
+    # Controllo CONTAINER per azioni che lo richiedono esplicitamente
+    actions_requiring_container = [
+        "give_item:", "tp_player:", "tp_coords", "weather_set:",
+        "tp_saved:" # Anche teleport su loc salvata richiede container
+    ]
+    if not CONTAINER and any(data.startswith(action_prefix) for action_prefix in actions_requiring_container):
+        await query.edit_message_text("Errore: La variabile CONTAINER non è impostata nel bot. Impossibile eseguire questa azione.")
+        return
+    # Per "give", "tp", "weather" (i pulsanti iniziali), il controllo container non è strettamente necessario qui
+    # perché le funzioni dirette e il menu stesso possono funzionare parzialmente o informare l'utente.
+    # Il controllo più stringente avviene quando si tenta di eseguire il comando docker.
 
     try:
-        if data == "give":
+        if data == "edit_username":
+            context.user_data["awaiting_username_edit"] = True
+            await query.edit_message_text("Inserisci il nuovo username Minecraft:")
+
+        elif data == "delete_location":
+            locs = users.get(uid, {}).get("locations", {})
+            if not locs:
+                await query.edit_message_text("Non hai posizioni salvate.")
+                return
+            buttons = [
+                [InlineKeyboardButton(f"❌ {name}", callback_data=f"delete_loc:{name}")]
+                for name in locs
+            ]
+            await query.edit_message_text(
+                "Seleziona la posizione da cancellare:",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+
+        elif data.startswith("delete_loc:"):
+            name = data.split(":", 1)[1]
+            if name in users[uid].get("locations", {}):
+                users[uid]["locations"].pop(name)
+                save_users()
+                await query.edit_message_text(f"Posizione «{name}» cancellata 🔥")
+            else:
+                await query.edit_message_text(f"Posizione «{name}» non trovata.")
+
+        elif data == "give": # Bottone dal /menu
             context.user_data["awaiting_give_prefix"] = True
             await query.edit_message_text("Ok, inviami il nome (o parte del nome/ID) dell'oggetto che vuoi dare:")
+        
         elif data.startswith("give_item:"):
             item_id = data.split(":", 1)[1]
             context.user_data["selected_item"] = item_id
             context.user_data["awaiting_item_quantity"] = True
             await query.edit_message_text(f"Item selezionato: {item_id}.\nInserisci la quantità desiderata:")
-        elif data == "tp":
+        
+        elif data == "tp": # Bottone dal /menu
             online_players = await get_online_players()
             buttons = []
-            if online_players:  # Mostra giocatori solo se ce ne sono
-                buttons.extend([InlineKeyboardButton(
-                    p, callback_data=f"tp_player:{p}") for p in online_players])
-            buttons.append(InlineKeyboardButton(
-                "📍 Inserisci coordinate", callback_data="tp_coords"))
-
-            # recupera le posizioni salvate
+            if online_players:
+                buttons.extend([
+                    InlineKeyboardButton(p, callback_data=f"tp_player:{p}")
+                    for p in online_players
+                ])
+            buttons.append(InlineKeyboardButton("📍 Inserisci coordinate", callback_data="tp_coords"))
             locs = users.get(uid, {}).get("locations", {})
             for name, coords in locs.items():
                 buttons.append(
-                    InlineKeyboardButton(
-                        f"📌 {name}", callback_data=f"tp_saved:{name}")
+                    InlineKeyboardButton(f"📌 {name}", callback_data=f"tp_saved:{name}")
                 )
-
-            # Organizza i bottoni, massimo 2 per riga
-            keyboard_layout = [buttons[i:i+2]
-                               for i in range(0, len(buttons), 2)]
-            # Se non ci sono giocatori e CONTAINER non è settato, non offrire opzioni che lo richiedono
+            keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+            markup = InlineKeyboardMarkup(keyboard_layout)
+            
+            text_reply = ""
             if not online_players and not CONTAINER:
-                await query.edit_message_text("Impossibile ottenere la lista giocatori (CONTAINER non settato o server non raggiungibile).\nPuoi solo inserire coordinate manualmente se il CONTAINER è configurato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📍 Inserisci coordinate", callback_data="tp_coords")]]))
+                text_reply = ("Impossibile ottenere la lista giocatori "
+                              "(CONTAINER non settato o server non raggiungibile).\n"
+                              "Puoi usare le posizioni salvate o inserire coordinate manualmente.")
             elif not online_players:
-                await query.edit_message_text("Nessun giocatore online trovato o impossibile recuperare la lista.\nPuoi teleportarti inserendo le coordinate:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📍 Inserisci coordinate", callback_data="tp_coords")]]))
+                text_reply = ("Nessun giocatore online trovato.\n"
+                              "Puoi usare le posizioni salvate o inserire coordinate manualmente:")
             else:
-                await query.edit_message_text("Scegli un giocatore a cui teleportarti o inserisci coordinate:", reply_markup=InlineKeyboardMarkup(keyboard_layout))
+                text_reply = ("Scegli un giocatore a cui teleportarti, usa una posizione salvata "
+                              "o inserisci coordinate:")
+            await query.edit_message_text(text_reply, reply_markup=markup)
 
         elif data.startswith("tp_saved:"):
+            if not CONTAINER: # Controllo specifico prima dell'azione
+                await query.edit_message_text("Errore: CONTAINER non configurato per il comando teleport.")
+                return
             location_name = data.split(":", 1)[1]
             loc = users[uid]["locations"].get(location_name)
             if not loc:
@@ -726,20 +790,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "tp_coords":
             context.user_data["awaiting_tp_coords"] = True
             await query.edit_message_text("Inserisci le coordinate nel formato: `x y z` (es. `100 64 -200`)")
+        
         elif data.startswith("tp_player:"):
-            if not CONTAINER:
+            if not CONTAINER: # Controllo specifico prima dell'azione
                 await query.edit_message_text("Errore: CONTAINER non configurato per il comando teleport.")
                 return
             target_player = data.split(":", 1)[1]
             cmd_text = f"tp {minecraft_username} {target_player}"
-            # Scegli la strategia corretta per il tuo server. Esempio per Bedrock:
             docker_cmd_args = ["docker", "exec",
                                CONTAINER, "send-command", cmd_text]
-            # Per Java con rcon-cli:
-            # docker_cmd_args = ["docker", "exec", CONTAINER, "rcon-cli", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Teleport verso {target_player} eseguito!")
-        elif data == "weather":
+        
+        elif data == "weather": # Bottone dal /menu
             buttons = [
                 [InlineKeyboardButton(
                     "☀️ Sereno (Clear)", callback_data="weather_set:clear")],
@@ -749,21 +812,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "⛈ Temporale (Thunder)", callback_data="weather_set:thunder")]
             ]
             await query.edit_message_text("Scegli le condizioni meteo:", reply_markup=InlineKeyboardMarkup(buttons))
+        
         elif data.startswith("weather_set:"):
-            if not CONTAINER:
+            if not CONTAINER: # Controllo specifico prima dell'azione
                 await query.edit_message_text("Errore: CONTAINER non configurato per il comando weather.")
                 return
             weather_condition = data.split(":", 1)[1]
             cmd_text = f"weather {weather_condition}"
-            # Scegli la strategia corretta. Esempio per Bedrock:
             docker_cmd_args = ["docker", "exec",
                                CONTAINER, "send-command", cmd_text]
-            # Per Java con rcon-cli:
-            # docker_cmd_args = ["docker", "exec", CONTAINER, "rcon-cli", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Meteo impostato su: {weather_condition.capitalize()}")
         else:
             await query.edit_message_text("Azione non riconosciuta o scaduta.")
+
     except asyncio.TimeoutError:
         await query.edit_message_text(f"Timeout eseguendo l'azione richiesta. Riprova.")
     except subprocess.CalledProcessError as e:
@@ -783,8 +845,6 @@ def main():
         logging.critical(
             "TELEGRAM_TOKEN non impostato. Il bot non può partire.")
         return
-    # La variabile CONTAINER viene controllata all'interno delle funzioni che la usano,
-    # permettendo al bot di avviarsi anche se non è impostata, ma con funzionalità limitate.
     if not CONTAINER:
         logging.warning(
             "La variabile CONTAINER non è impostata (nome container Docker). Funzionalità server Minecraft limitate.")
@@ -797,10 +857,16 @@ def main():
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("logout", logout))
     app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CommandHandler("logs", logs_command))  # Nome aggiornato
+    app.add_handler(CommandHandler("logs", logs_command))
     app.add_handler(CommandHandler("scarica_items", scarica_items))
-    app.add_handler(CommandHandler("cmd", cmd_command))  # Nome aggiornato
+    app.add_handler(CommandHandler("cmd", cmd_command))
     app.add_handler(CommandHandler("saveloc", saveloc_command))
+    app.add_handler(CommandHandler("edituser", edituser))
+
+    # NUOVI COMANDI DIRETTI REGISTRATI
+    app.add_handler(CommandHandler("give", give_direct_command))
+    app.add_handler(CommandHandler("tp", tp_direct_command))
+    app.add_handler(CommandHandler("weather", weather_direct_command))
 
     # Gestori di messaggi e callback
     app.add_handler(MessageHandler(

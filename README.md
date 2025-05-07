@@ -23,6 +23,20 @@ Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al ser
 1. Clona la repo
 2. Crea un file `.env` con le variabili `TELEGRAM_TOKEN` e `BOT_PASSWORD`
 3. Avvia il bot con:
-
+4. aggiungi i comandi rapidi da botfather :
+```
+menu - Apri il tuo zaino di azioni rapide! 🎒
+tp - Teletrasportati come un ninja! 💨
+weather - Cambia il meteo... se solo fosse così facile nella vita reale! ☀️🌧️⛈️
+give - Regala un oggetto a un amico (o a te stesso!). 🎁
+saveloc - Ricorda questo posto magico. 📍
+edituser - Modifica il tuo profilo o fai pulizia. ⚙️
+cmd - Sussurra comandi direttamente al server. 🤫
+logs - Sbircia dietro le quinte del server. 👀
+scarica_items - Aggiorna il tuo inventario di meraviglie. ✨
+logout - Esci in punta di piedi. 👋
+login - Entra nel mondo del bot! 🗝️
+help - Chiedi aiuto all'esperto bot! ❓
+```
 ```bash
 python bot.py
