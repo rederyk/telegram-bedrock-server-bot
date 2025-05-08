@@ -36,6 +36,10 @@ logs - Sbircia dietro le quinte del server. 👀
 scarica_items - Aggiorna il tuo inventario di meraviglie. ✨
 logout - Esci in punta di piedi. 👋
 login - Entra nel mondo del bot! 🗝️
+
+
+# TODO
+- use ssh instead of docker attach
 help - Chiedi aiuto all'esperto bot! ❓
 ```
 ```bash
