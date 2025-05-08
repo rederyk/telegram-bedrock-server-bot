@@ -38,9 +38,11 @@ logout - Esci in punta di piedi. 👋
 login - Entra nel mondo del bot! 🗝️
 
 
-# TODO
-- use ssh instead of docker attach
+
 help - Chiedi aiuto all'esperto bot! ❓
 ```
 ```bash
 python bot.py
+
+# TODO
+- use ssh instead of docker attach
