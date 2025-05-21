@@ -8,6 +8,9 @@ AUTH_PASSWORD = os.getenv("BOT_PASSWORD", "modifica_questa_password")
 USERS_FILE = "users.json"
 ITEMS_FILE = "items.json"
 CONTAINER = "bds"  # Assicurati che questo sia il nome corretto del tuo container Docker
+# ... other imports and variables ...
+WORLD_NAME = os.getenv("WORLD_NAME", "Bedrock level") # Default or from .env
+# ...
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO,

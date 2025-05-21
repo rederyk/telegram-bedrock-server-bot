@@ -9,10 +9,11 @@ services:
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - BOT_PASSWORD=${BOT_PASSWORD}
+      - WORLD_NAME=${WORLD_NAME}
     volumes:
       - ./users.json:/app/users.json
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/bedrockData:ro
+      - ./data:/bedrockData
 
   bedrock:
     image: itzg/minecraft-bedrock-server

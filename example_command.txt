@@ -1,0 +1,22 @@
+/cmd execute at CyberBot2047 run fill ~-2 ~-1 ~-2 ~2 ~-1 ~2 minecraft:smooth_stone replace
+ 
+#Angoli 2x2 (Mattoni di Pietra)
+execute at CyberBot2047 run fill ~-2 ~-1 ~-2 ~-1 ~-1 ~-1 minecraft:stone_bricks  # Angolo Alto-Sinistra
+execute at CyberBot2047 run fill ~1 ~-1 ~-2 ~2 ~-1 ~-1 minecraft:stone_bricks   # Angolo Alto-Destra
+execute at CyberBot2047 run fill ~-2 ~-1 ~1 ~-1 ~-1 ~2 minecraft:stone_bricks   # Angolo Basso-Sinistra
+execute at CyberBot2047 run fill ~1 ~-1 ~1 ~2 ~-1 ~2 minecraft:stone_bricks    # Angolo Basso-Destra
+ 
+#Bracci della Croce (Pietra Nera Mattoni)
+execute at CyberBot2047 run fill ~0 ~-1 ~-2 ~0 ~-1 ~-1 minecraft:polished_blackstone_bricks # Braccio su
+execute at CyberBot2047 run fill ~0 ~-1 ~1 ~0 ~-1 ~2 minecraft:polished_blackstone_bricks   # Braccio giù
+execute at CyberBot2047 run fill ~-2 ~-1 ~0 ~-1 ~-1 ~0 minecraft:polished_blackstone_bricks # Braccio sinistra
+execute at CyberBot2047 run fill ~1 ~-1 ~0 ~2 ~-1 ~0 minecraft:polished_blackstone_bricks  # Braccio destra
+
+#Centro della Croce (Nero Cesellato)
+execute at CyberBot2047 run fill ~0 ~-1 ~0 ~0 ~-1 ~0 minecraft:chiseled_polished_blackstone
+
+#Dettagli Cesellati Grigi ai punti di giunzione (opzionale)
+execute at CyberBot2047 run fill ~0 ~-1 ~-2 ~0 ~-1 ~-2 minecraft:chiseled_stone_bricks # Estremità braccio su
+execute at CyberBot2047 run fill ~0 ~-1 ~2 ~0 ~-1 ~2 minecraft:chiseled_stone_bricks   # Estremità braccio giù
+execute at CyberBot2047 run fill ~-2 ~-1 ~0 ~-2 ~-1 ~0 minecraft:chiseled_stone_bricks # Estremità braccio sx
+execute at CyberBot2047 run fill ~2 ~-1 ~0 ~2 ~-1 ~0 minecraft:chiseled_stone_bricks  # Estremità braccio dx

@@ -1,41 +1,38 @@
 # minecraft_telegram_bot/bot.py
-import asyncio # Aggiunto per asyncio.to_thread in scarica_items
+import asyncio 
 
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, InlineQueryHandler, filters
 )
 
-# Importa le configurazioni e i logger per primo
-from config import TOKEN, CONTAINER, logger # logger da config è già configurato
+from config import TOKEN, CONTAINER, logger # WORLD_NAME non serve qui direttamente
 
-# Importa i gestori dei comandi
 from command_handlers import (
     start, help_command, login, logout, menu_command,
     logs_command, scarica_items_command, cmd_command,
     saveloc_command, edituser,
-    give_direct_command, tp_direct_command, weather_direct_command
+    give_direct_command, tp_direct_command, weather_direct_command,
+    start_server_command, stop_server_command, restart_server_command,
+    imnotcreative_command # <--- IMPORT NUOVO COMANDO
 )
 
-# Importa i gestori dei messaggi e callback
 from message_handlers import (
     handle_text_message, callback_query_handler, inline_query_handler
 )
 
-# Importa moduli di gestione dati per l'inizializzazione se necessario
-import user_management # Per assicurare che users_data sia caricato
-import item_management # Per assicurare che ITEMS sia caricato/scaricato
+# user_management and item_management non serve importarli qui direttamente
+# se sono usati solo dai command_handlers
 
 def main():
-    # Le verifiche di TOKEN e CONTAINER sono già in config.py e loggano errori/warning
     if not TOKEN:
-        # Il logger.critical in config.py ha già segnalato, qui usciamo.
+        logger.error("TOKEN non fornito. Uscita.") # Aggiunto logger per errore
         return
 
     logger.info("Inizializzazione dell'applicazione Telegram Bot...")
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Registrazione Comandi
+    # Registrazione Comandi Utente e Interazione Server
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("login", login))
@@ -46,11 +43,16 @@ def main():
     application.add_handler(CommandHandler("cmd", cmd_command))
     application.add_handler(CommandHandler("saveloc", saveloc_command))
     application.add_handler(CommandHandler("edituser", edituser))
-
-    # Registrazione Comandi Diretti
     application.add_handler(CommandHandler("give", give_direct_command))
     application.add_handler(CommandHandler("tp", tp_direct_command))
     application.add_handler(CommandHandler("weather", weather_direct_command))
+
+    # Registrazione Comandi Gestione Container Server
+    application.add_handler(CommandHandler("startserver", start_server_command))
+    application.add_handler(CommandHandler("stopserver", stop_server_command))
+    application.add_handler(CommandHandler("restartserver", restart_server_command))
+    application.add_handler(CommandHandler("imnotcreative", imnotcreative_command)) # <-- REGISTRA NUOVO COMANDO
+
 
     # Registrazione Gestori di Messaggi e Callback
     application.add_handler(MessageHandler(
