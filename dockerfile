@@ -14,7 +14,4 @@ COPY . .
 
 VOLUME ["/app/users.json"]
 
-ENV TELEGRAM_TOKEN=""
-ENV BOT_PASSWORD="PASSWDje5Queighien"
-
 CMD ["python", "bot.py"]
