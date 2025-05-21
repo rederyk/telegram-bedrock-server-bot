@@ -12,3 +12,26 @@ services:
     volumes:
       - ./users.json:/app/users.json
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/bedrockData:ro
+
+  bedrock:
+    image: itzg/minecraft-bedrock-server
+    container_name: bds
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "19132:19132/udp"
+    environment:
+      EULA: "TRUE"
+      TZ: "Europe/Rome"
+      ENABLE_SSH: "TRUE"
+    volumes:
+      - ./data:/data
+    expose:
+      # This is a reminder that this port is exposed to other containers in this compose file.
+      - 2222
+
+
+
+
+
