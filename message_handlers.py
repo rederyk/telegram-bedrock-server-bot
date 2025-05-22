@@ -4,7 +4,7 @@ import subprocess
 import uuid
 import re
 import os
-import html # Importa html se non già presente per escape
+import html  # Importa html se non già presente per escape
 import tempfile
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -21,7 +21,8 @@ from user_management import (
 )
 from item_management import get_items
 from docker_utils import run_docker_command, get_online_players_from_server
-from world_management import get_backups_storage_path # Assicurati che sia importato
+# Assicurati che sia importato
+from world_management import get_backups_storage_path
 from command_handlers import menu_command, give_direct_command, tp_direct_command, weather_direct_command, saveloc_command
 from resource_pack_management import install_resource_pack_from_file, manage_world_resource_packs_json, ResourcePackError
 
@@ -29,6 +30,8 @@ from resource_pack_management import install_resource_pack_from_file, manage_wor
 logger = get_logger(__name__)
 
 # ... (codice esistente per handle_text_message e inline_query_handler)
+
+
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
@@ -56,7 +59,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif next_action == "weather":
             await weather_direct_command(update, context)
         elif next_action == "saveloc":
-             await saveloc_command(update,context)
+            await saveloc_command(update, context)
         else:
             await update.message.reply_text("Ora puoi usare i comandi che richiedono l'username (es. /menu).")
         return
@@ -95,7 +98,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"execute as {minecraft_username} at @s run tp @s ~ ~ ~0.0001"
         ]
         try:
-            logger.info(f"Esecuzione per ottenere coordinate: {' '.join(docker_cmd_get_pos)}")
+            logger.info(
+                f"Esecuzione per ottenere coordinate: {' '.join(docker_cmd_get_pos)}")
             await run_docker_command(docker_cmd_get_pos, read_output=False, timeout=10)
             await asyncio.sleep(1.0)
 
@@ -109,7 +113,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 matches = re.findall(pattern_bedrock, output)
 
             if not matches:
-                logger.warning(f"Nessuna coordinata trovata nei log per {minecraft_username} dopo /saveloc.")
+                logger.warning(
+                    f"Nessuna coordinata trovata nei log per {minecraft_username} dopo /saveloc.")
                 logger.debug(f"Output log per saveloc: {output}")
                 await update.message.reply_text(
                     "Impossibile trovare le coordinate nei log. Assicurati di essere in gioco, che i comandi siano abilitati e che l'output del comando 'tp' sia visibile nei log. Riprova più tardi."
@@ -131,9 +136,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Potrebbe essere necessario abilitare i comandi o verificare l'username."
             )
         except ValueError as e:
-             await update.message.reply_text(str(e))
+            await update.message.reply_text(str(e))
         except Exception as e:
-            logger.error(f"Errore in /saveloc (esecuzione comando): {e}", exc_info=True)
+            logger.error(
+                f"Errore in /saveloc (esecuzione comando): {e}", exc_info=True)
             await update.message.reply_text("Si è verificato un errore salvando la posizione.")
         return
 
@@ -183,21 +189,23 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 return
 
             cmd_text = f"give {minecraft_username} {item_id} {quantity}"
-            docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
+            docker_cmd_args = ["docker", "exec",
+                               CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await update.message.reply_text(f"Comando eseguito: /give {minecraft_username} {item_id} {quantity}")
 
         except ValueError as e:
             if "La quantità deve essere positiva" in str(e):
-                 await update.message.reply_text("Inserisci un numero valido (intero, maggiore di zero) per la quantità.")
+                await update.message.reply_text("Inserisci un numero valido (intero, maggiore di zero) per la quantità.")
             else:
-                 await update.message.reply_text(str(e))
+                await update.message.reply_text(str(e))
         except asyncio.TimeoutError:
             await update.message.reply_text("Timeout eseguendo il comando give.")
         except subprocess.CalledProcessError as e:
             await update.message.reply_text(f"Errore dal server Minecraft: {e.stderr or e.output or e}")
         except Exception as e:
-            logger.error(f"Errore imprevisto in handle_message (give quantity): {e}", exc_info=True)
+            logger.error(
+                f"Errore imprevisto in handle_message (give quantity): {e}", exc_info=True)
             await update.message.reply_text(f"Errore imprevisto: {e}")
         finally:
             context.user_data.pop("selected_item_for_give", None)
@@ -206,7 +214,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # Gestione nuova posizione resource pack
     if context.user_data.get("awaiting_rp_new_position"):
-        pack_uuid_to_move = context.user_data.pop("awaiting_rp_new_position", None)
+        pack_uuid_to_move = context.user_data.pop(
+            "awaiting_rp_new_position", None)
         if not pack_uuid_to_move:
             await update.message.reply_text("Errore interno: UUID del resource pack da spostare non trovato.")
             return
@@ -214,7 +223,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             new_position = int(text)
             if new_position <= 0:
-                raise ValueError("La posizione deve essere un numero positivo.")
+                raise ValueError(
+                    "La posizione deve essere un numero positivo.")
 
             # Adjust for 0-based index
             new_index = new_position - 1
@@ -238,12 +248,14 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         except ValueError:
             await update.message.reply_text("Inserisci un numero valido per la posizione.")
-            context.user_data["awaiting_rp_new_position"] = pack_uuid_to_move  # Restore if input is invalid
+            # Restore if input is invalid
+            context.user_data["awaiting_rp_new_position"] = pack_uuid_to_move
         except ResourcePackError as e:
             logger.error(f"📦❌ Errore spostamento RP {pack_uuid_to_move}: {e}")
             await update.message.reply_text(f"❌ Errore spostamento resource pack: {html.escape(str(e))}")
         except Exception as e:
-            logger.error(f"🆘 Errore imprevisto spostamento RP {pack_uuid_to_move}: {e}", exc_info=True)
+            logger.error(
+                f"🆘 Errore imprevisto spostamento RP {pack_uuid_to_move}: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Errore imprevisto durante lo spostamento: {html.escape(str(e))}")
         return
 
@@ -263,7 +275,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             try:
                 x, y, z = map(float, parts)
                 cmd_text = f"tp {minecraft_username} {x} {y} {z}"
-                docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
+                docker_cmd_args = ["docker", "exec",
+                                   CONTAINER, "send-command", cmd_text]
                 await run_docker_command(docker_cmd_args, read_output=False)
                 await update.message.reply_text(f"Comando eseguito: /tp {minecraft_username} {x} {y} {z}")
             except ValueError as e:
@@ -278,7 +291,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             except subprocess.CalledProcessError as e:
                 await update.message.reply_text(f"Errore dal server Minecraft: {e.stderr or e.output or e}")
             except Exception as e:
-                logger.error(f"Errore imprevisto in handle_message (tp coords): {e}", exc_info=True)
+                logger.error(
+                    f"Errore imprevisto in handle_message (tp coords): {e}", exc_info=True)
                 await update.message.reply_text(f"Errore imprevisto: {e}")
             finally:
                 context.user_data.pop("awaiting_tp_coords_input", None)
@@ -289,13 +303,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Usa /menu per vedere le opzioni o /help per la lista comandi."
         )
 
+
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query.strip().lower()
     results = []
     if query:
         all_items = get_items()
         if not all_items:
-            logger.warning("Inline query: lista ITEMS vuota o non disponibile.")
+            logger.warning(
+                "Inline query: lista ITEMS vuota o non disponibile.")
         else:
             matches = [
                 i for i in all_items
@@ -329,7 +345,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     # Modifica: download_backup_file non richiede username Minecraft, quindi la condizione cambia
     if not minecraft_username and \
        not data.startswith("edit_username") and \
-       not data.startswith("download_backup_file:"): # <<< MODIFICATO PREFISSO
+       not data.startswith("download_backup_file:"):  # <<< MODIFICATO PREFISSO
         context.user_data["awaiting_mc_username"] = True
         await query.edit_message_text(
             "Il tuo username Minecraft non è impostato. Per favore, invialo in chat."
@@ -340,7 +356,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         "give_item_select:", "tp_player:", "tp_coords_input", "weather_set:",
         "tp_saved:", "menu_give", "menu_tp", "menu_weather"
     ]
-    is_action_requiring_container = any(data.startswith(action_prefix) for action_prefix in actions_requiring_container)
+    is_action_requiring_container = any(data.startswith(
+        action_prefix) for action_prefix in actions_requiring_container)
 
     if not CONTAINER and is_action_requiring_container:
         if not (data == "delete_location" or data.startswith("delete_loc:") or data == "edit_username"):
@@ -361,7 +378,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 await query.edit_message_text("Non hai posizioni salvate.")
                 return
             buttons = [
-                [InlineKeyboardButton(f"❌ {name}", callback_data=f"delete_loc:{name}")]
+                [InlineKeyboardButton(
+                    f"❌ {name}", callback_data=f"delete_loc:{name}")]
                 for name in user_locs
             ]
             await query.edit_message_text(
@@ -396,29 +414,31 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     InlineKeyboardButton(p, callback_data=f"tp_player:{p}")
                     for p in online_players
                 ])
-            buttons.append(InlineKeyboardButton("📍 Inserisci coordinate", callback_data="tp_coords_input"))
+            buttons.append(InlineKeyboardButton(
+                "📍 Inserisci coordinate", callback_data="tp_coords_input"))
             user_locs = get_locations(uid)
             for name in user_locs:
-                buttons.append(InlineKeyboardButton(f"📌 {name}", callback_data=f"tp_saved:{name}"))
+                buttons.append(InlineKeyboardButton(
+                    f"📌 {name}", callback_data=f"tp_saved:{name}"))
 
             if not buttons:
-                 await query.edit_message_text(
+                await query.edit_message_text(
                     "Nessun giocatore online e nessuna posizione salvata. "
                     "Puoi solo inserire le coordinate manualmente.",
                     reply_markup=InlineKeyboardMarkup([[buttons[0]]])
-                 )
-                 return
+                )
+                return
 
-            keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+            keyboard_layout = [buttons[i:i+2]
+                               for i in range(0, len(buttons), 2)]
             markup = InlineKeyboardMarkup(keyboard_layout)
             text_reply = "Scegli una destinazione:"
             if not online_players and not CONTAINER:
-                 text_reply = ("Impossibile ottenere lista giocatori (CONTAINER non settato).\n"
-                               "Scegli tra posizioni salvate o coordinate.")
+                text_reply = ("Impossibile ottenere lista giocatori (CONTAINER non settato).\n"
+                              "Scegli tra posizioni salvate o coordinate.")
             elif not online_players:
-                 text_reply = "Nessun giocatore online.\nScegli tra posizioni salvate o coordinate:"
+                text_reply = "Nessun giocatore online.\nScegli tra posizioni salvate o coordinate:"
             await query.edit_message_text(text_reply, reply_markup=markup)
-
 
         elif data.startswith("tp_saved:"):
             location_name = data.split(":", 1)[1]
@@ -428,8 +448,10 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 await query.edit_message_text(f"Posizione '{location_name}' non trovata.")
                 return
             x, y, z = loc_coords["x"], loc_coords["y"], loc_coords["z"]
-            cmd_text = f"tp {minecraft_username} {x} {y} {z}" # Assicurati che minecraft_username sia disponibile
-            docker_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
+            # Assicurati che minecraft_username sia disponibile
+            cmd_text = f"tp {minecraft_username} {x} {y} {z}"
+            docker_args = ["docker", "exec",
+                           CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_args, read_output=False)
             await query.edit_message_text(f"Teleport eseguito su '{location_name}': {x:.2f}, {y:.2f}, {z:.2f}")
 
@@ -439,16 +461,21 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         elif data.startswith("tp_player:"):
             target_player = data.split(":", 1)[1]
-            cmd_text = f"tp {minecraft_username} {target_player}" # Assicurati che minecraft_username sia disponibile
-            docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
+            # Assicurati che minecraft_username sia disponibile
+            cmd_text = f"tp {minecraft_username} {target_player}"
+            docker_cmd_args = ["docker", "exec",
+                               CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Teleport verso {target_player} eseguito!")
 
         elif data == "menu_weather":
             buttons = [
-                [InlineKeyboardButton("☀️ Sereno (Clear)", callback_data="weather_set:clear")],
-                [InlineKeyboardButton("🌧 Pioggia (Rain)", callback_data="weather_set:rain")],
-                [InlineKeyboardButton("⛈ Temporale (Thunder)", callback_data="weather_set:thunder")]
+                [InlineKeyboardButton(
+                    "☀️ Sereno (Clear)", callback_data="weather_set:clear")],
+                [InlineKeyboardButton("🌧 Pioggia (Rain)",
+                                      callback_data="weather_set:rain")],
+                [InlineKeyboardButton(
+                    "⛈ Temporale (Thunder)", callback_data="weather_set:thunder")]
             ]
             await query.edit_message_text(
                 "Scegli le condizioni meteo:", reply_markup=InlineKeyboardMarkup(buttons)
@@ -457,17 +484,20 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         elif data.startswith("weather_set:"):
             weather_condition = data.split(":", 1)[1]
             cmd_text = f"weather {weather_condition}"
-            docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
+            docker_cmd_args = ["docker", "exec",
+                               CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Meteo impostato su: {weather_condition.capitalize()}")
 
         # <<< MODIFICA PREFISSO E LOGICA DI DOWNLOAD >>>
-        elif data.startswith("download_backup_file:"): # Nuovo prefisso
+        elif data.startswith("download_backup_file:"):  # Nuovo prefisso
             backup_filename_from_callback = data.split(":", 1)[1]
 
             backups_dir = get_backups_storage_path()
-            backup_file_path = os.path.join(backups_dir, backup_filename_from_callback)
-            logger.info(f"Tentativo di scaricare il file di backup da: {backup_file_path} (richiesto da callback: {data})")
+            backup_file_path = os.path.join(
+                backups_dir, backup_filename_from_callback)
+            logger.info(
+                f"Tentativo di scaricare il file di backup da: {backup_file_path} (richiesto da callback: {data})")
 
             if os.path.exists(backup_file_path):
                 try:
@@ -489,10 +519,12 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     await query.message.reply_text(f"✅ File '{html.escape(backup_filename_from_callback)}' inviato!")
 
                 except Exception as e:
-                    logger.error(f"Errore inviando il file di backup '{backup_file_path}': {e}", exc_info=True)
+                    logger.error(
+                        f"Errore inviando il file di backup '{backup_file_path}': {e}", exc_info=True)
                     await query.message.reply_text(f"⚠️ Impossibile inviare il file di backup '{html.escape(backup_filename_from_callback)}': {e}")
             else:
-                logger.warning(f"File di backup non trovato per il download: {backup_file_path}")
+                logger.warning(
+                    f"File di backup non trovato per il download: {backup_file_path}")
                 await query.edit_message_text(f"⚠️ File di backup non trovato: <code>{html.escape(backup_filename_from_callback)}</code>. Potrebbe essere stato spostato o cancellato.", parse_mode=ParseMode.HTML)
         # <<< FINE MODIFICA >>>
 
@@ -501,15 +533,20 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             # Find the pack name to display in the next message
             try:
                 active_packs_details = await asyncio.to_thread(get_world_active_packs_with_details, WORLD_NAME)
-                pack_details = next((p for p in active_packs_details if p['uuid'] == pack_uuid), None)
-                pack_name = pack_details.get('name', 'Nome Sconosciuto') if pack_details else 'Nome Sconosciuto'
+                pack_details = next(
+                    (p for p in active_packs_details if p['uuid'] == pack_uuid), None)
+                pack_name = pack_details.get(
+                    'name', 'Nome Sconosciuto') if pack_details else 'Nome Sconosciuto'
             except Exception:
-                pack_name = 'Nome Sconosciuto' # Fallback in case of error
+                pack_name = 'Nome Sconosciuto'  # Fallback in case of error
 
             buttons = [
-                [InlineKeyboardButton("🗑️ Elimina", callback_data=f"rp_action:delete:{pack_uuid}")],
-                [InlineKeyboardButton("↕️ Sposta", callback_data=f"rp_action:move:{pack_uuid}")],
-                [InlineKeyboardButton("↩️ Annulla", callback_data="rp_action:cancel_manage")]
+                [InlineKeyboardButton(
+                    "🗑️ Elimina", callback_data=f"rp_action:delete:{pack_uuid}")],
+                [InlineKeyboardButton(
+                    "↕️ Sposta", callback_data=f"rp_action:move:{pack_uuid}")],
+                [InlineKeyboardButton(
+                    "↩️ Annulla", callback_data="rp_action:cancel_manage")]
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
             await query.edit_message_text(
@@ -526,7 +563,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     pack_uuid_to_remove=pack_uuid_to_delete
                 )
                 # Log & suggerimento riavvio
-                logger.info(f"Resource pack {pack_uuid_to_delete} rimosso — ricordati di /restartserver per applicare.")
+                logger.info(
+                    f"Resource pack {pack_uuid_to_delete} rimosso — ricordati di /restartserver per applicare.")
                 await query.edit_message_text(
                     f"✅ Resource pack <code>{pack_uuid_to_delete[:8]}...</code> eliminato dalla lista attiva.\n"
                     "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver",
@@ -534,10 +572,12 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 )
 
             except ResourcePackError as e:
-                logger.error(f"📦❌ Errore eliminazione RP {pack_uuid_to_delete}: {e}")
+                logger.error(
+                    f"📦❌ Errore eliminazione RP {pack_uuid_to_delete}: {e}")
                 await query.edit_message_text(f"❌ Errore eliminazione resource pack: {html.escape(str(e))}")
             except Exception as e:
-                logger.error(f"🆘 Errore imprevisto eliminazione RP {pack_uuid_to_delete}: {e}", exc_info=True)
+                logger.error(
+                    f"🆘 Errore imprevisto eliminazione RP {pack_uuid_to_delete}: {e}", exc_info=True)
                 await query.edit_message_text(f"❌ Errore imprevisto durante l'eliminazione: {html.escape(str(e))}")
 
         elif data.startswith("rp_action:move:"):
@@ -559,12 +599,15 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     except subprocess.CalledProcessError as e:
         error_detail = e.stderr or e.output or str(e)
         await query.edit_message_text(f"Errore dal server Minecraft: {error_detail}. Riprova o contatta un admin.")
-        logger.error(f"CalledProcessError in button_handler for data '{data}': {e}", exc_info=True)
+        logger.error(
+            f"CalledProcessError in button_handler for data '{data}': {e}", exc_info=True)
     except ValueError as e:
         await query.edit_message_text(str(e))
     except Exception as e:
-        logger.error(f"Errore imprevisto in button_handler for data '{data}': {e}", exc_info=True)
+        logger.error(
+            f"Errore imprevisto in button_handler for data '{data}': {e}", exc_info=True)
         await query.edit_message_text("Si è verificato un errore imprevisto. Riprova più tardi.")
+
 
 async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming document messages, attempting to install them as resource packs."""
@@ -601,7 +644,8 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
             # Download the file
             new_file = await context.bot.get_file(document.file_id)
             await new_file.download_to_drive(custom_path=temp_file_path)
-            logger.info(f"Document downloaded to temporary path: {temp_file_path}")
+            logger.info(
+                f"Document downloaded to temporary path: {temp_file_path}")
 
             # Install the resource pack
             installed_pack_path, pack_uuid, pack_version, pack_name = install_resource_pack_from_file(
@@ -617,18 +661,22 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
                 pack_version_to_add=pack_version,
                 add_at_beginning=True
             )
-            logger.info(f"Resource pack {pack_name} ({pack_uuid}) activated for world {WORLD_NAME}.")
+            logger.info(
+                f"Resource pack {pack_name} ({pack_uuid}) activated for world {WORLD_NAME}.")
 
             # Log & suggerimento riavvio
-            logger.info(f"Resource pack {pack_uuid} aggiunto — ricordati di /restartserver per applicare.")
+            logger.info(
+                f"Resource pack {pack_uuid} aggiunto — ricordati di /restartserver per applicare.")
             await update.message.reply_text(
                 f"✅ Resource pack '{pack_name}' installato e attivato per il mondo '{WORLD_NAME}'.\n"
                 "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver"
             )
 
     except ResourcePackError as e:
-        logger.error(f"Errore durante l'installazione/attivazione del resource pack: {e}")
+        logger.error(
+            f"Errore durante l'installazione/attivazione del resource pack: {e}")
         await update.message.reply_text(f"⚠️ Errore durante l'installazione del resource pack: {e}")
     except Exception as e:
-        logger.error(f"Errore imprevisto in handle_document_message: {e}", exc_info=True)
+        logger.error(
+            f"Errore imprevisto in handle_document_message: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Si è verificato un errore imprevisto durante la gestione del documento: {e}")
