@@ -6,7 +6,7 @@ from telegram.ext import (
     CallbackQueryHandler, InlineQueryHandler, filters
 )
 
-from config import TOKEN, CONTAINER, logger # WORLD_NAME non serve qui direttamente
+from config import TOKEN, CONTAINER, logger 
 
 from command_handlers import (
     start, help_command, login, logout, menu_command,
@@ -14,19 +14,18 @@ from command_handlers import (
     saveloc_command, edituser,
     give_direct_command, tp_direct_command, weather_direct_command,
     start_server_command, stop_server_command, restart_server_command,
-    imnotcreative_command # <--- IMPORT NUOVO COMANDO
+    imnotcreative_command,
+    backup_world_command, 
+    list_backups_command # <<< NUOVO IMPORT
 )
 
 from message_handlers import (
     handle_text_message, callback_query_handler, inline_query_handler
 )
 
-# user_management and item_management non serve importarli qui direttamente
-# se sono usati solo dai command_handlers
-
 def main():
     if not TOKEN:
-        logger.error("TOKEN non fornito. Uscita.") # Aggiunto logger per errore
+        logger.error("TOKEN non fornito. Uscita.") 
         return
 
     logger.info("Inizializzazione dell'applicazione Telegram Bot...")
@@ -51,7 +50,9 @@ def main():
     application.add_handler(CommandHandler("startserver", start_server_command))
     application.add_handler(CommandHandler("stopserver", stop_server_command))
     application.add_handler(CommandHandler("restartserver", restart_server_command))
-    application.add_handler(CommandHandler("imnotcreative", imnotcreative_command)) # <-- REGISTRA NUOVO COMANDO
+    application.add_handler(CommandHandler("imnotcreative", imnotcreative_command))
+    application.add_handler(CommandHandler("backup_world", backup_world_command))
+    application.add_handler(CommandHandler("list_backups", list_backups_command)) # <<< REGISTRA NUOVO COMANDO
 
 
     # Registrazione Gestori di Messaggi e Callback

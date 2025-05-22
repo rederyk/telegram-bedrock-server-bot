@@ -3,6 +3,8 @@ import asyncio
 import subprocess
 import uuid
 import re
+import os 
+import html # Importa html se non già presente per escape
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     InlineQueryResultArticle, InputTextMessageContent
@@ -14,16 +16,17 @@ from config import CONTAINER, get_logger
 from user_management import (
     is_user_authenticated, get_minecraft_username, set_minecraft_username,
     save_location, get_user_data, get_locations, delete_location,
-    users_data # Accesso diretto per modifica username, da valutare se creare setter specifico
+    users_data 
 )
 from item_management import get_items
 from docker_utils import run_docker_command, get_online_players_from_server
-# Importa i comandi per rieseguirli dopo l'inserimento dell'username
+from world_management import get_backups_storage_path # Assicurati che sia importato
 from command_handlers import menu_command, give_direct_command, tp_direct_command, weather_direct_command, saveloc_command
 
 
 logger = get_logger(__name__)
 
+# ... (codice esistente per handle_text_message e inline_query_handler)
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip()
@@ -51,13 +54,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         elif next_action == "weather":
             await weather_direct_command(update, context)
         elif next_action == "saveloc":
-             await saveloc_command(update,context) # Richiama saveloc per chiedere il nome
+             await saveloc_command(update,context) 
         else:
             await update.message.reply_text("Ora puoi usare i comandi che richiedono l'username (es. /menu).")
         return
 
     minecraft_username = get_minecraft_username(uid)
-    if not minecraft_username: # Sicurezza aggiuntiva
+    if not minecraft_username: 
         context.user_data["awaiting_mc_username"] = True
         await update.message.reply_text("Per favore, inserisci prima il tuo username Minecraft:")
         return
@@ -67,9 +70,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not text:
             await update.message.reply_text("Nome utente non valido. Riprova.")
             return
-        # Accesso diretto a users_data per la modifica, non ideale ma semplice
         users_data[uid]["minecraft_username"] = text
-        from user_management import save_users # Importazione locale per evitare circular import a livello di modulo
+        from user_management import save_users 
         save_users()
         context.user_data.pop("awaiting_username_edit")
         await update.message.reply_text(f"Username aggiornato a: {text}")
@@ -86,27 +88,21 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not CONTAINER:
             await update.message.reply_text("Impossibile salvare la posizione: CONTAINER non configurato.")
             return
-
-        # Ottieni coordinate
         docker_cmd_get_pos = [
             "docker", "exec", CONTAINER, "send-command",
-            f"execute as {minecraft_username} at @s run tp @s ~ ~ ~0.0001" # Piccolo offset per triggerare l'output
+            f"execute as {minecraft_username} at @s run tp @s ~ ~ ~0.0001" 
         ]
         try:
             logger.info(f"Esecuzione per ottenere coordinate: {' '.join(docker_cmd_get_pos)}")
             await run_docker_command(docker_cmd_get_pos, read_output=False, timeout=10)
-            await asyncio.sleep(1.0) # Dai tempo al server di loggare
+            await asyncio.sleep(1.0) 
 
             log_args = ["docker", "logs", "--tail", "100", CONTAINER]
             output = await run_docker_command(log_args, read_output=True, timeout=5)
 
             pattern = rf"Teleported {re.escape(minecraft_username)} to ([0-9\.\-]+),\s*([0-9\.\-]+),\s*([0-9\.\-]+)"
-            # Per Bedrock, il formato potrebbe essere diverso, es:
-            # "[INFO] Teleported <PlayerName> to <x>, <y>, <z>"
-            # Dovremmo cercare il pattern più recente nei log.
             matches = re.findall(pattern, output)
             if not matches:
-                 # Prova un pattern alternativo per Bedrock (più generico, potrebbe richiedere affinamenti)
                 pattern_bedrock = rf"Teleported {re.escape(minecraft_username)} to ([0-9\.\-]+), ([0-9\.\-]+), ([0-9\.\-]+)"
                 matches = re.findall(pattern_bedrock, output)
 
@@ -118,7 +114,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
                 return
 
-            x_str, y_str, z_str = matches[-1] # Prendi l'ultima occorrenza
+            x_str, y_str, z_str = matches[-1] 
             coords = {"x": float(x_str), "y": float(y_str), "z": float(z_str)}
 
             save_location(uid, location_name, coords)
@@ -132,7 +128,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"Errore del server Minecraft durante il salvataggio: {e.stderr or e.output or e}. "
                 "Potrebbe essere necessario abilitare i comandi o verificare l'username."
             )
-        except ValueError as e: # Per CONTAINER non configurato
+        except ValueError as e: 
              await update.message.reply_text(str(e))
         except Exception as e:
             logger.error(f"Errore in /saveloc (esecuzione comando): {e}", exc_info=True)
@@ -145,7 +141,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         all_items = get_items()
         matches = [
             i for i in all_items
-            if prefix in i["id"].lower() or prefix in i["name"].lower() # Modificato per cercare sottostringhe
+            if prefix in i["id"].lower() or prefix in i["name"].lower() 
         ]
         if not matches:
             await update.message.reply_text("Nessun item trovato con quel nome/ID. Riprova o usa /menu.")
@@ -153,9 +149,9 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             buttons = [
                 InlineKeyboardButton(
                     f'{i["name"]} ({i["id"]})', callback_data=f'give_item_select:{i["id"]}'
-                ) for i in matches[:20] # Limita a 20 risultati per non appesantire
+                ) for i in matches[:20] 
             ]
-            keyboard = [buttons[j:j+1] for j in range(len(buttons))] # Un bottone per riga
+            keyboard = [buttons[j:j+1] for j in range(len(buttons))] 
             await update.message.reply_text(
                 f"Ho trovato {len(matches)} item (mostro i primi {len(buttons)}). Scegli un item:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -192,7 +188,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except ValueError as e:
             if "La quantità deve essere positiva" in str(e):
                  await update.message.reply_text("Inserisci un numero valido (intero, maggiore di zero) per la quantità.")
-            else: # Per CONTAINER non configurato o altri ValueError
+            else: 
                  await update.message.reply_text(str(e))
         except asyncio.TimeoutError:
             await update.message.reply_text("Timeout eseguendo il comando give.")
@@ -220,7 +216,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             try:
-                x, y, z = map(float, parts) # o int se preferisci coordinate intere
+                x, y, z = map(float, parts) 
                 cmd_text = f"tp {minecraft_username} {x} {y} {z}"
                 docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
                 await run_docker_command(docker_cmd_args, read_output=False)
@@ -230,7 +226,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await update.message.reply_text(
                         "Le coordinate devono essere numeri validi (es. 100 64.5 -200). Riprova o /menu, /tp."
                     )
-                else: # Per CONTAINER non configurato o altri ValueError
+                else: 
                     await update.message.reply_text(str(e))
             except asyncio.TimeoutError:
                 await update.message.reply_text("Timeout eseguendo il comando teleport.")
@@ -242,23 +238,18 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             finally:
                 context.user_data.pop("awaiting_tp_coords_input", None)
         return
-
-    # Se nessun stato ha gestito il messaggio e non è un comando
     if not text.startswith('/'):
         await update.message.reply_text(
             "Comando testuale non riconosciuto o stato non attivo. "
             "Usa /menu per vedere le opzioni o /help per la lista comandi."
         )
 
-
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query.strip().lower()
     results = []
-    # Non richiedere autenticazione per query inline, ma l'utente dovrà essere autenticato per usare il comando risultante.
-
-    if query: # Solo se c'è una query
+    if query: 
         all_items = get_items()
-        if not all_items: # Se ITEMS è vuoto o None
+        if not all_items: 
             logger.warning("Inline query: lista ITEMS vuota o non disponibile.")
         else:
             matches = [
@@ -267,21 +258,20 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             ]
             results = [
                 InlineQueryResultArticle(
-                    id=str(uuid.uuid4()), # ID univoco per ogni risultato
+                    id=str(uuid.uuid4()), 
                     title=i["name"],
                     description=f'ID: {i["id"]}',
                     input_message_content=InputTextMessageContent(
-                        f'/give {{MINECRAFT_USERNAME}} {i["id"]} 1' # Placeholder per l'username
+                        f'/give {{MINECRAFT_USERNAME}} {i["id"]} 1' 
                     )
-                ) for i in matches[:20] # Limita i risultati
+                ) for i in matches[:20] 
             ]
-    # cache_time basso per sviluppo, aumentalo in produzione (es. 300-3600s)
     await update.inline_query.answer(results, cache_time=10)
 
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() # Importante per far sparire l'icona di caricamento sul client
+    await query.answer() 
 
     uid = query.from_user.id
     data = query.data
@@ -291,21 +281,23 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     minecraft_username = get_minecraft_username(uid)
-    if not minecraft_username and not data.startswith("edit_username"): # L'edit username non richiede un MC username esistente
+    # Modifica: download_backup_file non richiede username Minecraft, quindi la condizione cambia
+    if not minecraft_username and \
+       not data.startswith("edit_username") and \
+       not data.startswith("download_backup_file:"): # <<< MODIFICATO PREFISSO
         context.user_data["awaiting_mc_username"] = True
-        # Potresti voler salvare 'data' in user_data per rieseguire l'azione dopo l'inserimento dell'username
         await query.edit_message_text(
             "Il tuo username Minecraft non è impostato. Per favore, invialo in chat."
         )
         return
 
-    # Controllo CONTAINER per azioni che lo richiedono
     actions_requiring_container = [
         "give_item_select:", "tp_player:", "tp_coords_input", "weather_set:",
-        "tp_saved:", "menu_give", "menu_tp", "menu_weather" # Anche i menu che portano ad azioni Docker
+        "tp_saved:", "menu_give", "menu_tp", "menu_weather"
     ]
-    if not CONTAINER and any(data.startswith(action_prefix) for action_prefix in actions_requiring_container):
-         # Eccezione per 'delete_location' e 'edit_username' che non usano CONTAINER
+    is_action_requiring_container = any(data.startswith(action_prefix) for action_prefix in actions_requiring_container)
+    
+    if not CONTAINER and is_action_requiring_container:
         if not (data == "delete_location" or data.startswith("delete_loc:") or data == "edit_username"):
             await query.edit_message_text(
                 "Errore: La variabile CONTAINER non è impostata nel bot. "
@@ -339,22 +331,22 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             else:
                 await query.edit_message_text(f"Posizione «{name_to_delete}» non trovata.")
 
-        elif data == "menu_give": # Bottone dal /menu
+        elif data == "menu_give": 
             context.user_data["awaiting_give_prefix"] = True
             await query.edit_message_text(
                 "Ok, inviami il nome (o parte del nome/ID) dell'oggetto che vuoi dare:"
             )
 
-        elif data.startswith("give_item_select:"): # Selezione da lista oggetti
+        elif data.startswith("give_item_select:"): 
             item_id = data.split(":", 1)[1]
             context.user_data["selected_item_for_give"] = item_id
             context.user_data["awaiting_item_quantity"] = True
             await query.edit_message_text(f"Item selezionato: {item_id}.\nInserisci la quantità desiderata:")
 
-        elif data == "menu_tp": # Bottone dal /menu
+        elif data == "menu_tp": 
             online_players = await get_online_players_from_server()
             buttons = []
-            if online_players: # Aggiungi giocatori online solo se ce ne sono
+            if online_players: 
                 buttons.extend([
                     InlineKeyboardButton(p, callback_data=f"tp_player:{p}")
                     for p in online_players
@@ -364,11 +356,11 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             for name in user_locs:
                 buttons.append(InlineKeyboardButton(f"📌 {name}", callback_data=f"tp_saved:{name}"))
 
-            if not buttons: # Nessun giocatore, nessuna loc salvata, solo coordinate
+            if not buttons: 
                  await query.edit_message_text(
                     "Nessun giocatore online e nessuna posizione salvata. "
                     "Puoi solo inserire le coordinate manualmente.",
-                    reply_markup=InlineKeyboardMarkup([[buttons[0]]]) # Solo "Inserisci coordinate"
+                    reply_markup=InlineKeyboardMarkup([[buttons[0]]]) 
                  )
                  return
 
@@ -391,23 +383,23 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 await query.edit_message_text(f"Posizione '{location_name}' non trovata.")
                 return
             x, y, z = loc_coords["x"], loc_coords["y"], loc_coords["z"]
-            cmd_text = f"tp {minecraft_username} {x} {y} {z}"
+            cmd_text = f"tp {minecraft_username} {x} {y} {z}" # Assicurati che minecraft_username sia disponibile
             docker_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_args, read_output=False)
             await query.edit_message_text(f"Teleport eseguito su '{location_name}': {x:.2f}, {y:.2f}, {z:.2f}")
 
-        elif data == "tp_coords_input": # Richiesta di inserimento coordinate
+        elif data == "tp_coords_input": 
             context.user_data["awaiting_tp_coords_input"] = True
             await query.edit_message_text("Inserisci le coordinate nel formato: `x y z` (es. `100 64 -200`)")
 
         elif data.startswith("tp_player:"):
             target_player = data.split(":", 1)[1]
-            cmd_text = f"tp {minecraft_username} {target_player}"
+            cmd_text = f"tp {minecraft_username} {target_player}" # Assicurati che minecraft_username sia disponibile
             docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Teleport verso {target_player} eseguito!")
 
-        elif data == "menu_weather": # Bottone dal /menu
+        elif data == "menu_weather": 
             buttons = [
                 [InlineKeyboardButton("☀️ Sereno (Clear)", callback_data="weather_set:clear")],
                 [InlineKeyboardButton("🌧 Pioggia (Rain)", callback_data="weather_set:rain")],
@@ -423,6 +415,41 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             docker_cmd_args = ["docker", "exec", CONTAINER, "send-command", cmd_text]
             await run_docker_command(docker_cmd_args, read_output=False)
             await query.edit_message_text(f"Meteo impostato su: {weather_condition.capitalize()}")
+        
+        # <<< MODIFICA PREFISSO E LOGICA DI DOWNLOAD >>>
+        elif data.startswith("download_backup_file:"): # Nuovo prefisso
+            backup_filename_from_callback = data.split(":", 1)[1]
+            
+            backups_dir = get_backups_storage_path() 
+            backup_file_path = os.path.join(backups_dir, backup_filename_from_callback)
+            logger.info(f"Tentativo di scaricare il file di backup da: {backup_file_path} (richiesto da callback: {data})")
+
+            if os.path.exists(backup_file_path):
+                try:
+                    # Invia un messaggio di attesa e modifica il messaggio precedente (quello con la lista dei backup)
+                    # per rimuovere i bottoni o indicare che il download è in corso per quel file.
+                    original_message_text = query.message.text
+                    await query.edit_message_text(f"{original_message_text}\n\n⏳ Preparazione invio di '{html.escape(backup_filename_from_callback)}'...")
+                    
+                    with open(backup_file_path, "rb") as backup_file:
+                        await context.bot.send_document(
+                            chat_id=query.message.chat_id,
+                            document=backup_file,
+                            filename=os.path.basename(backup_file_path), 
+                            caption=f"Backup del mondo: {os.path.basename(backup_file_path)}"
+                        )
+                    # Dopo l'invio, si potrebbe ripristinare il messaggio originale o aggiornarlo.
+                    # Per semplicità, lo lasciamo modificato con "Preparazione invio..."
+                    # oppure si può inviare un ulteriore messaggio di conferma:
+                    await query.message.reply_text(f"✅ File '{html.escape(backup_filename_from_callback)}' inviato!")
+
+                except Exception as e:
+                    logger.error(f"Errore inviando il file di backup '{backup_file_path}': {e}", exc_info=True)
+                    await query.message.reply_text(f"⚠️ Impossibile inviare il file di backup '{html.escape(backup_filename_from_callback)}': {e}")
+            else:
+                logger.warning(f"File di backup non trovato per il download: {backup_file_path}")
+                await query.edit_message_text(f"⚠️ File di backup non trovato: <code>{html.escape(backup_filename_from_callback)}</code>. Potrebbe essere stato spostato o cancellato.", parse_mode=ParseMode.HTML)
+        # <<< FINE MODIFICA >>>
 
         else:
             await query.edit_message_text("Azione non riconosciuta o scaduta.")
@@ -433,7 +460,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         error_detail = e.stderr or e.output or str(e)
         await query.edit_message_text(f"Errore dal server Minecraft: {error_detail}. Riprova o contatta un admin.")
         logger.error(f"CalledProcessError in button_handler for data '{data}': {error_detail}")
-    except ValueError as e: # Per CONTAINER non configurato o altri ValueError
+    except ValueError as e: 
         await query.edit_message_text(str(e))
     except Exception as e:
         logger.error(f"Errore imprevisto in button_handler for data '{data}': {e}", exc_info=True)

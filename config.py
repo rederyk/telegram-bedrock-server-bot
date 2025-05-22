@@ -8,9 +8,8 @@ AUTH_PASSWORD = os.getenv("BOT_PASSWORD", "modifica_questa_password")
 USERS_FILE = "users.json"
 ITEMS_FILE = "items.json"
 CONTAINER = "bds"  # Assicurati che questo sia il nome corretto del tuo container Docker
-# ... other imports and variables ...
 WORLD_NAME = os.getenv("WORLD_NAME", "Bedrock level") # Default or from .env
-# ...
+BACKUPS_DIR_NAME = "backups" # <<< NUOVA RIGA: Nome della sottocartella per i backup
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO,
@@ -26,3 +25,5 @@ if not TOKEN:
     logger.critical("TELEGRAM_TOKEN non impostato. Il bot non può partire.")
 if not CONTAINER:
     logger.warning("La variabile CONTAINER non è impostata. Funzionalità server Minecraft limitate.")
+if not WORLD_NAME:
+    logger.warning("La variabile WORLD_NAME non è impostata. Funzionalità come backup e imnotcreative potrebbero non funzionare.")

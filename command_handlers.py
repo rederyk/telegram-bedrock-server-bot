@@ -3,12 +3,15 @@ import asyncio
 import subprocess
 import re
 import html
+import os
+import shutil
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from config import CONTAINER, WORLD_NAME, get_logger 
-
+from config import CONTAINER, WORLD_NAME, get_logger
+from world_management import reset_creative_flag, get_world_directory_path, get_backups_storage_path
 from user_management import (
     auth_required, authenticate_user, logout_user,
     get_minecraft_username, set_minecraft_username,
@@ -16,11 +19,12 @@ from user_management import (
 )
 from item_management import refresh_items, get_items
 from docker_utils import run_docker_command, get_online_players_from_server
-from world_management import reset_creative_flag
 
 
 logger = get_logger(__name__)
 
+# ... (codice esistente per start, help_command, ecc. fino a restart_server_command)
+# Assicurati che le funzioni fino a restart_server_command siano presenti come prima
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot Minecraft attivo. Usa /login <password> per iniziare.")
@@ -53,6 +57,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stopserver - Arresta il container del server Minecraft\n"
         "/restartserver - Riavvia il container del server Minecraft\n"
         "/imnotcreative - Resetta il flag 'HasBeenLoadedInCreative' del mondo (richiede conferma)\n"
+        "/backup_world - Ferma il server, crea un backup del mondo e lo salva.\n"
+        "/list_backups - Mostra i backup disponibili e permette di scaricarli.\n" # <<< NUOVA VOCE HELP
         "\n<b>Utility Bot:</b>\n"
         "/scarica_items - Aggiorna lista oggetti Minecraft\n\n"
         "<i>Puoi anche digitare @&lt;nome_bot&gt; + nome oggetto per suggerimenti inline.</i>"
@@ -160,43 +166,29 @@ async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     processed_lines_info = [] 
 
     for line_number, line_content in enumerate(raw_command_block.splitlines(), 1):
-        # 1. Pulisci la riga da spazi bianchi esterni
         processed_line = line_content.strip()
-
-        # 2. Ignora righe completamente vuote
         if not processed_line:
             processed_lines_info.append(f"<i>Riga {line_number}: Vuota, ignorata.</i>")
             continue
-
-        # 3. Ignora righe che iniziano con # (commenti interi)
         if processed_line.startswith("#"):
             display_comment = html.escape(processed_line[:50]) + ('...' if len(processed_line) > 50 else '')
             processed_lines_info.append(f"<i>Riga {line_number}: Commento intera riga ('{display_comment}'), ignorata.</i>")
             continue
-
-        # 4. Estrai la parte di comando prima di un eventuale # a fine riga
         command_candidate = processed_line
         hash_index = processed_line.find("#")
         if hash_index != -1:
             command_candidate = processed_line[:hash_index].strip()
-        
-        # 5. Se la parte di comando è vuota (es. riga era "   # commento"), ignorala
         if not command_candidate:
             display_line_part = html.escape(processed_line[:50]) + ('...' if len(processed_line) > 50 else '')
             processed_lines_info.append(f"<i>Riga {line_number}: Contenuto prima di '#' vuoto ('{display_line_part}'), ignorata.</i>")
             continue
-            
-        # 6. Rimuovi lo slash iniziale dal comando, se presente
         final_command_text = command_candidate
         if final_command_text.startswith("/"):
             final_command_text = final_command_text[1:].strip()
-
-        # 7. Se il comando finale è vuoto (es. la riga era solo "/" o "/   " prima del commento), ignoralo
         if not final_command_text:
             display_line_part = html.escape(processed_line[:50]) + ('...' if len(processed_line) > 50 else '')
             processed_lines_info.append(f"<i>Riga {line_number}: Comando vuoto dopo pulizia slash ('{display_line_part}'), ignorata.</i>")
             continue
-            
         commands_to_execute.append({
             'text': final_command_text, 
             'original_line_number': line_number
@@ -216,17 +208,13 @@ async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for cmd_info in commands_to_execute:
         command_text = cmd_info['text']
         line_num = cmd_info['original_line_number']
-
         try:
             docker_command_args = ["docker", "exec", CONTAINER, "send-command", command_text]
             logger.info(f"Esecuzione comando server da riga {line_num} (multilinea /cmd): {' '.join(docker_command_args)}")
-            
             await run_docker_command(docker_command_args, read_output=False, timeout=10)
-            
             msg = f"✅ Riga {line_num}: Inviato <code>{html.escape(command_text)}</code>"
             await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
             await asyncio.sleep(0.3) 
-
         except asyncio.TimeoutError:
             error_msg = f"⌛ Riga {line_num}: Timeout eseguendo <code>{html.escape(command_text)}</code>"
             logger.error(f"Timeout cmd_command (multilinea, riga {line_num}): '{command_text}'.")
@@ -248,7 +236,6 @@ async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if processed_lines_info: 
         final_summary_parts.append("\n<b>Linee ignorate o commenti:</b>")
         final_summary_parts.extend(processed_lines_info)
-    
     final_summary_parts.append("\nL'output dei comandi (se presente) apparirà nei log del server (visibili con /logs).")
     await update.message.reply_text("\n".join(final_summary_parts), parse_mode=ParseMode.HTML)
 
@@ -285,7 +272,6 @@ async def saveloc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Inseriscilo ora, poi riprova /saveloc:"
         )
         return
-
     context.user_data["awaiting_saveloc_name"] = True
     await update.message.reply_text("Inserisci un nome per la posizione che vuoi salvare:")
 
@@ -300,7 +286,6 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Sembra che il tuo username Minecraft non sia impostato. Inseriscilo ora:"
         )
         return
-
     kb = [
         [InlineKeyboardButton("🎁 Give item", callback_data="menu_give")],
         [InlineKeyboardButton("🚀 Teleport", callback_data="menu_tp")],
@@ -338,7 +323,6 @@ async def tp_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Inseriscilo ora, poi potrai usare /tp:"
         )
         return
-
     try:
         online_players = await get_online_players_from_server()
         buttons = []
@@ -349,15 +333,12 @@ async def tp_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         buttons.append(InlineKeyboardButton(
             "📍 Inserisci coordinate", callback_data="tp_coords_input"))
-
         user_locs = get_locations(uid)
         for name in user_locs:
             buttons.append(InlineKeyboardButton(
                 f"📌 {name}", callback_data=f"tp_saved:{name}"))
-
         keyboard_layout = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
         markup = InlineKeyboardMarkup(keyboard_layout)
-
         text_reply = "Scegli una destinazione per il teletrasporto:"
         if not online_players and not CONTAINER:
             text_reply = (
@@ -370,7 +351,6 @@ async def tp_direct_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Puoi usare le posizioni salvate o inserire coordinate manualmente:"
             )
         await update.message.reply_text(text_reply, reply_markup=markup)
-
     except ValueError as e:
         await update.message.reply_text(str(e))
     except Exception as e:
@@ -391,7 +371,6 @@ async def weather_direct_command(update: Update, context: ContextTypes.DEFAULT_T
             "Inseriscilo ora, poi potrai usare /weather:"
         )
         return
-
     buttons = [
         [InlineKeyboardButton("☀️ Sereno (Clear)",
                               callback_data="weather_set:clear")],
@@ -410,27 +389,25 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not CONTAINER:
         await update.message.reply_text("⚠️ Variabile CONTAINER non impostata. Impossibile arrestare il server.")
         return
-
     await update.message.reply_text(f"⏳ Tentativo di arrestare il container '{CONTAINER}'...")
     try:
-        await run_docker_command(["docker", "stop", CONTAINER], read_output=True, timeout=30)
-        logger.info(
-            f"Comando 'docker stop {CONTAINER}' eseguito con successo.")
+        await run_docker_command(["docker", "stop", CONTAINER], read_output=True, timeout=45)
+        logger.info(f"Comando 'docker stop {CONTAINER}' eseguito con successo.")
         await update.message.reply_text(f"✅ Container '{CONTAINER}' arrestato con successo.")
+        return True 
     except asyncio.TimeoutError:
         logger.error(f"Timeout durante l'arresto del container {CONTAINER}.")
         await update.message.reply_text(f"⌛ Timeout: l'arresto del container '{CONTAINER}' sta richiedendo più tempo del previsto. Controlla manualmente lo stato.")
     except subprocess.CalledProcessError as e:
         error_message = html.escape(e.stderr or str(e.output) or str(e))
-        logger.error(
-            f"Errore durante l'arresto del container {CONTAINER}: {e.stderr or e.output or e}")
+        logger.error(f"Errore durante l'arresto del container {CONTAINER}: {e.stderr or e.output or e}")
         await update.message.reply_text(f"❌ Errore durante l'arresto di '{CONTAINER}':\n<pre>{error_message}</pre>", parse_mode=ParseMode.HTML)
-    except ValueError as e:
+    except ValueError as e: 
         await update.message.reply_text(str(e))
     except Exception as e:
-        logger.error(
-            f"Errore imprevisto in stop_server_command: {e}", exc_info=True)
+        logger.error(f"Errore imprevisto in stop_server_command: {e}", exc_info=True)
         await update.message.reply_text(f"🆘 Errore imprevisto durante l'arresto del server: {e}")
+    return False
 
 
 @auth_required
@@ -438,27 +415,25 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not CONTAINER:
         await update.message.reply_text("⚠️ Variabile CONTAINER non impostata. Impossibile avviare il server.")
         return
-
     await update.message.reply_text(f"⏳ Tentativo di avviare il container '{CONTAINER}'...")
     try:
         await run_docker_command(["docker", "start", CONTAINER], read_output=True, timeout=30)
-        logger.info(
-            f"Comando 'docker start {CONTAINER}' eseguito con successo.")
+        logger.info(f"Comando 'docker start {CONTAINER}' eseguito con successo.")
         await update.message.reply_text(f"✅ Container '{CONTAINER}' avviato con successo.")
+        return True 
     except asyncio.TimeoutError:
         logger.error(f"Timeout durante l'avvio del container {CONTAINER}.")
         await update.message.reply_text(f"⌛ Timeout: l'avvio del container '{CONTAINER}' sta richiedendo più tempo del previsto. Potrebbe essere già in esecuzione o avere problemi.")
     except subprocess.CalledProcessError as e:
         error_message = html.escape(e.stderr or str(e.output) or str(e))
-        logger.error(
-            f"Errore durante l'avvio del container {CONTAINER}: {e.stderr or e.output or e}")
+        logger.error(f"Errore durante l'avvio del container {CONTAINER}: {e.stderr or e.output or e}")
         await update.message.reply_text(f"❌ Errore durante l'avvio di '{CONTAINER}':\n<pre>{error_message}</pre>", parse_mode=ParseMode.HTML)
     except ValueError as e:
         await update.message.reply_text(str(e))
     except Exception as e:
-        logger.error(
-            f"Errore imprevisto in start_server_command: {e}", exc_info=True)
+        logger.error(f"Errore imprevisto in start_server_command: {e}", exc_info=True)
         await update.message.reply_text(f"🆘 Errore imprevisto durante l'avvio del server: {e}")
+    return False
 
 
 @auth_required
@@ -466,28 +441,194 @@ async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_T
     if not CONTAINER:
         await update.message.reply_text("⚠️ Variabile CONTAINER non impostata. Impossibile riavviare il server.")
         return
-
     await update.message.reply_text(f"⏳ Tentativo di riavviare il container '{CONTAINER}'...")
     try:
         await run_docker_command(["docker", "restart", CONTAINER], read_output=True, timeout=45)
-        logger.info(
-            f"Comando 'docker restart {CONTAINER}' eseguito con successo.")
+        logger.info(f"Comando 'docker restart {CONTAINER}' eseguito con successo.")
         await update.message.reply_text(f"✅ Container '{CONTAINER}' riavviato con successo.")
     except asyncio.TimeoutError:
         logger.error(f"Timeout durante il riavvio del container {CONTAINER}.")
         await update.message.reply_text(f"⌛ Timeout: il riavvio del container '{CONTAINER}' sta richiedendo più tempo del previsto. Controlla manualmente.")
     except subprocess.CalledProcessError as e:
         error_message = html.escape(e.stderr or str(e.output) or str(e))
-        logger.error(
-            f"Errore durante il riavvio del container {CONTAINER}: {e.stderr or e.output or e}")
+        logger.error(f"Errore durante il riavvio del container {CONTAINER}: {e.stderr or e.output or e}")
         await update.message.reply_text(f"❌ Errore durante il riavvio di '{CONTAINER}':\n<pre>{error_message}</pre>", parse_mode=ParseMode.HTML)
     except ValueError as e:
         await update.message.reply_text(str(e))
     except Exception as e:
-        logger.error(
-            f"Errore imprevisto in restart_server_command: {e}", exc_info=True)
+        logger.error(f"Errore imprevisto in restart_server_command: {e}", exc_info=True)
         await update.message.reply_text(f"🆘 Errore imprevisto durante il riavvio del server: {e}")
 
+@auth_required
+async def backup_world_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not CONTAINER:
+        await update.message.reply_text("⚠️ Variabile CONTAINER non impostata. Impossibile procedere con il backup.")
+        return
+    if not WORLD_NAME:
+        await update.message.reply_text("⚠️ Variabile WORLD_NAME non impostata in configurazione. Impossibile identificare il mondo per il backup.")
+        return
+
+    await update.message.reply_text(f"⏳ Inizio procedura di backup per il mondo '{WORLD_NAME}'...")
+
+    stopped_successfully = False
+    try:
+        await update.message.reply_text(f"🛑 Arresto del container '{CONTAINER}' in corso...")
+        await run_docker_command(["docker", "stop", CONTAINER], read_output=True, timeout=45)
+        logger.info(f"Container '{CONTAINER}' arrestato con successo per backup.")
+        await update.message.reply_text(f"✅ Container '{CONTAINER}' arrestato.")
+        stopped_successfully = True
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout durante l'arresto del container {CONTAINER} per backup.")
+        await update.message.reply_text(f"⌛ Timeout arresto container '{CONTAINER}'. Potrebbe essere necessario un controllo manuale.")
+    except subprocess.CalledProcessError as e:
+        error_msg = html.escape(e.stderr or str(e.output) or str(e))
+        logger.error(f"Errore durante l'arresto del container {CONTAINER} per backup: {error_msg}")
+        await update.message.reply_text(f"❌ Errore arresto container '{CONTAINER}':\n<pre>{error_msg}</pre>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Errore imprevisto durante l'arresto per backup: {e}", exc_info=True)
+        await update.message.reply_text(f"🆘 Errore imprevisto durante l'arresto: {e}")
+
+    if not stopped_successfully:
+        await update.message.reply_text("❌ Procedura di backup interrotta a causa di problemi con l'arresto del server.")
+        await _restart_server_after_action(update, context, CONTAINER, "backup (errore stop)")
+        return
+
+    await update.message.reply_text("⏱ Attesa di qualche secondo per il rilascio dei file...")
+    await asyncio.sleep(5)
+
+    world_to_backup_path = get_world_directory_path(WORLD_NAME)
+    backups_storage_path = get_backups_storage_path() 
+
+    if not world_to_backup_path:
+        await update.message.reply_text(f"❌ Impossibile trovare la directory del mondo '{WORLD_NAME}'. Backup annullato.")
+        await _restart_server_after_action(update, context, CONTAINER, "backup (errore path mondo)")
+        return
+
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_world_name = "".join(c if c.isalnum() or c in (' ', '_', '-') else '_' for c in WORLD_NAME).rstrip()
+    backup_filename_base = f"{safe_world_name}_backup_{timestamp_str}"
+    archive_base_path = os.path.join(backups_storage_path, backup_filename_base)
+    final_archive_path = f"{archive_base_path}.zip"
+    backup_filename_only = os.path.basename(final_archive_path) # Nome del file per il messaggio
+
+    await update.message.reply_text(f"🗜 Creazione dell'archivio zip per '{WORLD_NAME}' in corso...")
+    try:
+        logger.info(f"Tentativo di archiviare '{world_to_backup_path}' in '{final_archive_path}'")
+        logger.info(f"Parametri per make_archive: base_name='{archive_base_path}', format='zip', root_dir='{os.path.dirname(world_to_backup_path)}', base_dir='{os.path.basename(world_to_backup_path)}'")
+        
+        await asyncio.to_thread(
+            shutil.make_archive,
+            base_name=archive_base_path,
+            format='zip',
+            root_dir=os.path.dirname(world_to_backup_path),
+            base_dir=os.path.basename(world_to_backup_path)
+        )
+        
+        logger.info(f"Archivio '{final_archive_path}' creato con successo.")
+        try:
+            os.chmod(final_archive_path, 0o644) 
+            logger.info(f"Permessi per '{final_archive_path}' impostati a 0o644.")
+        except OSError as e_chmod:
+            logger.error(f"Errore impostando i permessi per '{final_archive_path}': {e_chmod}")
+            await update.message.reply_text(f"⚠️ Attenzione: Impossibile impostare i permessi per il file di backup. Potrebbe richiedere sudo per l'accesso.")
+
+        # <<< MODIFICA MESSAGGIO FINALE >>>
+        await update.message.reply_text(
+            f"✅ Backup del mondo '{WORLD_NAME}' completato e salvato come:\n"
+            f"<code>{backup_filename_only}</code>\n\n"
+            f"Usa il comando /list_backups per vedere tutti i backup e scaricarli.",
+            parse_mode=ParseMode.HTML
+        )
+
+    except FileNotFoundError:
+        logger.error(f"Errore durante la creazione dell'archivio: la directory del mondo '{world_to_backup_path}' non è stata trovata.")
+        await update.message.reply_text(f"❌ Errore: la directory del mondo '{world_to_backup_path}' non esiste. Backup fallito.")
+        await _restart_server_after_action(update, context, CONTAINER, "backup (file non trovato)")
+        return
+    except Exception as e:
+        logger.error(f"Errore durante la fase di archiviazione: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Errore durante la creazione del backup ZIP: {e}")
+        await _restart_server_after_action(update, context, CONTAINER, "backup (errore zip)")
+        return 
+    
+    await _restart_server_after_action(update, context, CONTAINER, "backup")
+    await update.message.reply_text(f"ℹ️ Procedura di backup per '{WORLD_NAME}' completata.")
+
+
+async def _restart_server_after_action(update: Update, context: ContextTypes.DEFAULT_TYPE, container_name: str, action_name: str):
+    await update.message.reply_text(f"🚀 Riavvio del container '{container_name}' dopo {action_name}...")
+    try:
+        await run_docker_command(["docker", "start", container_name], read_output=True, timeout=30)
+        logger.info(f"Container '{container_name}' avviato con successo post-{action_name}.")
+        await update.message.reply_text(f"✅ Container '{container_name}' avviato. Il server dovrebbe essere di nuovo online.")
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout durante l'avvio del container {container_name} post-{action_name}.")
+        await update.message.reply_text(f"⌛ Timeout avvio '{container_name}'. Controlla manualmente, potrebbe essere già attivo o avere problemi.")
+    except subprocess.CalledProcessError as e:
+        error_msg = html.escape(e.stderr or str(e.output) or str(e))
+        logger.error(f"Errore durante l'avvio del container {container_name} post-{action_name}: {error_msg}")
+        await update.message.reply_text(f"❌ Errore avvio '{container_name}':\n<pre>{error_msg}</pre>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Errore imprevisto durante l'avvio post-{action_name}: {e}", exc_info=True)
+        await update.message.reply_text(f"🆘 Errore imprevisto durante l'avvio: {e}")
+
+# <<< INIZIO NUOVO COMANDO LIST_BACKUPS >>>
+@auth_required
+async def list_backups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    backups_dir = get_backups_storage_path()
+    try:
+        backup_files = [f for f in os.listdir(backups_dir) if f.endswith(".zip")]
+    except FileNotFoundError:
+        await update.message.reply_text(f"La directory dei backup ({backups_dir}) non è stata trovata.")
+        logger.warning(f"Directory dei backup non trovata: {backups_dir}")
+        return
+    except Exception as e:
+        await update.message.reply_text(f"Errore leggendo la directory dei backup: {e}")
+        logger.error(f"Errore leggendo la directory dei backup {backups_dir}: {e}", exc_info=True)
+        return
+
+    if not backup_files:
+        await update.message.reply_text("Nessun backup trovato nella directory.")
+        return
+
+    # Ordina i file per data di modifica (i più recenti prima), se desiderato,
+    # oppure alfabeticamente come fa os.listdir. Per data di modifica:
+    # backup_files.sort(key=lambda f: os.path.getmtime(os.path.join(backups_dir, f)), reverse=True)
+    # Per ora, li lasciamo in ordine alfabetico/default di os.listdir
+
+    buttons = []
+    # Limita il numero di backup mostrati per evitare messaggi troppo lunghi
+    # Potresti implementare la paginazione qui se necessario
+    max_backups_to_show = 15 
+    for filename in backup_files[:max_backups_to_show]:
+        # Crea un bottone per ogni file. Assicurati che il nome del file sia entro i limiti per callback_data.
+        # Se il nome del file è ancora troppo lungo, dovrai usare un ID o un indice.
+        callback_data = f"download_backup_file:{filename}"
+        if len(callback_data.encode('utf-8')) <= 64:
+            buttons.append([InlineKeyboardButton(f"📥 {filename}", callback_data=callback_data)])
+        else:
+            logger.warning(f"Nome file '{filename}' troppo lungo per callback_data nel comando /list_backups.")
+            # Opzionale: informa l'utente che alcuni file non possono avere un bottone di download diretto
+            # buttons.append([InlineKeyboardButton(f"{filename} (nome troppo lungo per download diretto)", callback_data="noop")])
+
+
+    if not buttons: # Se tutti i nomi file fossero troppo lunghi (improbabile ma possibile)
+        file_list_text = "\n".join([f"- <code>{html.escape(f)}</code>" for f in backup_files])
+        await update.message.reply_text(
+            f"Elenco dei backup disponibili (nomi file troppo lunghi per bottoni diretti):\n{file_list_text}\n\n"
+            "Per scaricare, potrebbe essere necessario accedere manualmente al server.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    reply_markup = InlineKeyboardMarkup(buttons)
+    message_text = "Seleziona un backup da scaricare:"
+    if len(backup_files) > max_backups_to_show:
+        message_text += f"\n(Mostrati i primi {max_backups_to_show} di {len(backup_files)} backup)"
+    
+    await update.message.reply_text(message_text, reply_markup=reply_markup)
+
+# <<< FINE NUOVO COMANDO LIST_BACKUPS >>>
 
 @auth_required
 async def imnotcreative_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -533,12 +674,7 @@ async def imnotcreative_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not stopped_successfully:
         await update.message.reply_text("❌ Procedura '/imnotcreative' interrotta a causa di problemi con l'arresto del server.")
-        await update.message.reply_text(f"⚠️ Tentativo di riavviare il server '{CONTAINER}' per sicurezza...")
-        try:
-            await run_docker_command(["docker", "start", CONTAINER], read_output=True, timeout=30)
-            await update.message.reply_text(f"✅ Server '{CONTAINER}' dovrebbe essere in fase di riavvio.")
-        except Exception as e_restart:
-            await update.message.reply_text(f"❌ Fallito tentativo di riavvio: {e_restart}. Controllare Docker manualmente.")
+        await _restart_server_after_action(update, context, CONTAINER, "imnotcreative (errore stop)")
         return
 
     await update.message.reply_text("⏱ Attesa di qualche secondo per il rilascio dei file...")
@@ -551,21 +687,5 @@ async def imnotcreative_command(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(f"⚠️ {html.escape(message)}")
 
-    await update.message.reply_text(f"🚀 Riavvio del container '{CONTAINER}' in corso...")
-    try:
-        await run_docker_command(["docker", "start", CONTAINER], read_output=True, timeout=30)
-        logger.info(f"Container '{CONTAINER}' avviato con successo post imnotcreative.")
-        await update.message.reply_text(f"✅ Container '{CONTAINER}' avviato. Il server dovrebbe essere di nuovo online.")
-    except asyncio.TimeoutError:
-        logger.error(f"Timeout durante l'avvio del container {CONTAINER} post imnotcreative.")
-        await update.message.reply_text(f"⌛ Timeout avvio '{CONTAINER}'. Controlla manualmente, potrebbe essere già attivo o avere problemi.")
-    except subprocess.CalledProcessError as e:
-        error_message = html.escape(e.stderr or str(e.output) or str(e))
-        logger.error(
-            f"Errore durante l'avvio del container {CONTAINER} post imnotcreative: {e.stderr or e.output or e}")
-        await update.message.reply_text(f"❌ Errore avvio '{CONTAINER}':\n<pre>{error_message}</pre>", parse_mode=ParseMode.HTML)
-    except Exception as e:
-        logger.error(f"Errore imprevisto durante l'avvio post imnotcreative: {e}", exc_info=True)
-        await update.message.reply_text(f"🆘 Errore imprevisto durante l'avvio: {e}")
-
+    await _restart_server_after_action(update, context, CONTAINER, "imnotcreative")
     await update.message.reply_text("ℹ️ Procedura '/imnotcreative' completata.")
