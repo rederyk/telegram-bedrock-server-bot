@@ -1,5 +1,5 @@
-# minecraft_telegram_bot/resource_pack_management.py
 import os
+import re
 import json
 import zipfile
 import requests
@@ -16,56 +16,96 @@ logger = get_logger(__name__)
 class ResourcePackError(Exception):
     pass
 
+
 def _is_valid_url(url: str) -> bool:
     return url.startswith('http://') or url.startswith('https://')
 
+
 def _extract_manifest_from_zip(pack_zip_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Apre lo .zip, trova manifest.json in qualsiasi sottocartella,
+    lo legge come testo e con regex estrae uuid, version e name.
+    Ritorna dict compatibile con _parse_manifest_data.
+    """
     try:
         with zipfile.ZipFile(pack_zip_path, 'r') as zf:
-            # Cerca un file che finisca con manifest.json ovunque nel pacchetto
-            manifest_path = next((name for name in zf.namelist() if name.endswith('manifest.json')), None)
-            if not manifest_path:
+            path = next((n for n in zf.namelist() if n.lower().endswith('manifest.json')), None)
+            if not path:
                 logger.error(f"📄❓ manifest.json non trovato in {pack_zip_path}")
                 return None
-            with zf.open(manifest_path) as manifest_file:
-                return json.load(manifest_file)
+            raw = zf.read(path).decode('utf-8', errors='ignore')
+
+        # estrai via regex
+        m_uuid = re.search(r'"uuid"\s*:\s*"([0-9a-fA-F\-]{36})"', raw)
+        m_ver = re.search(r'"version"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]', raw)
+        header = re.search(r'"header"\s*:\s*\{(.*?)\}', raw, flags=re.DOTALL)
+
+        pack_uuid = m_uuid.group(1) if m_uuid else None
+        version = [int(m_ver.group(i)) for i in (1, 2, 3)] if m_ver else None
+
+        name = None
+        if header:
+            m_name = re.search(r'"name"\s*:\s*"([^"}]+)"', header.group(1))
+            if m_name:
+                name = m_name.group(1)
+        if not name:
+            name = os.path.splitext(os.path.basename(pack_zip_path))[0]
+
+        # pulizia: rimuovo codici di formattazione Minecraft (§x)
+        clean_name = re.sub(r'§.', '', name)
+
+        return {'header': {'uuid': pack_uuid, 'version': version, 'name': clean_name}}
+
     except zipfile.BadZipFile:
         logger.error(f"📦❌ ZIP corrotto/invalido: {pack_zip_path}")
-    except json.JSONDecodeError:
-        logger.error(f"📄❌ Errore JSON nel manifest di {pack_zip_path}")
     except Exception as e:
-        logger.error(f"🆘 Errore estrazione manifest da {pack_zip_path}: {e}", exc_info=True)
+        logger.error(f"🆘 Errore brutal manifest parse: {e}", exc_info=True)
     return None
 
 
-
-def _parse_manifest_data(manifest_data: Dict[str, Any], pack_path_for_log: str) -> Tuple[Optional[str], Optional[List[int]], Optional[str]]:
+def _parse_manifest_data(
+    manifest_data: Dict[str, Any],
+    pack_path_for_log: str
+) -> Tuple[Optional[str], Optional[List[int]], Optional[str]]:
     if not manifest_data:
         return None, None, None
 
     header = manifest_data.get('header', {})
     pack_uuid = header.get('uuid')
     version = header.get('version')
-    name = header.get('name', 'Nome sconosciuto')
 
-    if name == 'pack.name' or name == 'Nome sconosciuto':
-        modules = manifest_data.get('modules', [])
-        if modules and isinstance(modules, list) and len(modules) > 0:
-            module_description = modules[0].get('description', '').strip()
-            if module_description and module_description != 'pack.description':
-                name = module_description
-            elif name == 'Nome sconosciuto' and pack_path_for_log:
-                name = os.path.basename(pack_path_for_log).replace('.zip', '').replace('.mcpack', '')
+    # nome grezzo dal manifest
+    raw_name = header.get('name', 'Nome sconosciuto')
+    # 1) rimuovo codici di formattazione Minecraft (§x)
+    name = re.sub(r'§.', '', raw_name)
+
+    # 2) se non ho version dal manifest, cerco “vX.Y.Z” nel nome
+    if not version:
+        m = re.search(r'v(\d+(?:\.\d+){1,2})', name, flags=re.IGNORECASE)
+        if m:
+            version = [int(p) for p in m.group(1).split('.')]
+            # rimuovo la parte “vX.Y.Z” e parentesi
+            name = re.sub(
+                r'[\(\[]?\s*v' + re.escape(m.group(1)) + r'[\)\]]?',
+                '',
+                name,
+                flags=re.IGNORECASE
+            ).strip()
+
+    # 3) fallback: se nome vuoto, uso filename senza estensione
+    if not name:
+        name = os.path.splitext(os.path.basename(pack_path_for_log))[0]
 
     if not pack_uuid or not isinstance(pack_uuid, str):
         logger.warning(f"❓ UUID mancante/invalido in manifest: {pack_path_for_log}")
         return None, version if isinstance(version, list) else None, name
     if not version or not isinstance(version, list) or not all(isinstance(v, int) for v in version):
         logger.warning(f"❓ Versione mancante/invalida ({version}) in manifest: {pack_path_for_log}")
-        return pack_uuid, None, name
+        version = version if isinstance(version, list) else None
 
     logger.info(f"📄 Estratto manifest {pack_path_for_log}: UUID={pack_uuid}, Ver={version}, Nome={name}")
-    return str(pack_uuid), list(version), str(name)
+    return pack_uuid, version, name
+
 
 async def download_resource_pack_from_url(url: str, temp_dir: str) -> str:
     if not _is_valid_url(url):
@@ -73,30 +113,24 @@ async def download_resource_pack_from_url(url: str, temp_dir: str) -> str:
     try:
         response = await asyncio.to_thread(requests.get, url, stream=True, timeout=30)
         response.raise_for_status()
-        content_disposition = response.headers.get('content-disposition')
+        content_disposition = response.headers.get('content-disposition', '')
         filename = None
-        if content_disposition:
-            parts = content_disposition.split('filename=')
-            if len(parts) > 1:
-                filename = parts[1].strip('" ')
+        if 'filename=' in content_disposition:
+            filename = content_disposition.split('filename=')[-1].strip('" ')
         if not filename:
-            filename = url.split('/')[-1]
-            if not filename or '?' in filename:
-                 filename = "downloaded_pack_" + str(uuid.uuid4())[:8]
+            filename = os.path.basename(url.split('?')[0]) or f"download_{uuid.uuid4().hex[:8]}"
         if not any(filename.lower().endswith(ext) for ext in ['.zip', '.mcpack']):
-            filename += ".zip"
+            filename += '.zip'
         temp_file_path = os.path.join(temp_dir, filename)
         with open(temp_file_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         logger.info(f"🔗📦 File scaricato da {url} -> {temp_file_path}")
         return temp_file_path
-    except requests.exceptions.RequestException as e:
-        logger.error(f"🔗❌ Errore download {url}: {e}")
-        raise ResourcePackError(f"Errore di download: {e}")
     except Exception as e:
-        logger.error(f"🔗🆘 Errore download imprevisto {url}: {e}", exc_info=True)
-        raise ResourcePackError(f"Errore imprevisto durante il download: {e}")
+        logger.error(f"🔗❌ Errore download {url}: {e}")
+        raise ResourcePackError(f"Errore download: {e}")
+
 
 def install_resource_pack_from_file(
     source_file_path: str,
@@ -105,21 +139,13 @@ def install_resource_pack_from_file(
     resource_packs_folder = get_resource_packs_main_folder_path()
     if not resource_packs_folder:
         raise ResourcePackError("Impossibile determinare la cartella dei resource pack.")
-    if not os.path.exists(resource_packs_folder):
-        try:
-            os.makedirs(resource_packs_folder)
-            logger.info(f"📦 Cartella resource_packs creata: {resource_packs_folder}")
-        except OSError as e:
-            raise ResourcePackError(f"Impossibile creare cartella resource_packs {resource_packs_folder}: {e}")
+    os.makedirs(resource_packs_folder, exist_ok=True)
 
+    # sposta file nel repository globale
     base, ext = os.path.splitext(original_filename)
-    target_filename = base + ".zip" if ext.lower() == '.mcpack' else original_filename
-    if not target_filename.lower().endswith(".zip"):
-         raise ResourcePackError(f"Formato file non supportato: {original_filename}. Deve essere .zip o .mcpack.")
-
+    target_filename = base + '.zip' if ext.lower() == '.mcpack' else original_filename
     destination_path = os.path.join(resource_packs_folder, target_filename)
     if os.path.exists(destination_path):
-        logger.warning(f"📦⚠️ File '{target_filename}' esistente, sovrascritto.")
         try:
             os.remove(destination_path)
         except OSError as e:
@@ -127,7 +153,15 @@ def install_resource_pack_from_file(
 
     try:
         shutil.move(source_file_path, destination_path)
-        logger.info(f"📦 File '{original_filename}' -> '{destination_path}'.")
+        logger.info(f"📦 File '{original_filename}' -> '{destination_path}'")
+
+        # copia anche nella cartella del mondo attivo
+        world_json = get_world_specific_resource_packs_json_path(WORLD_NAME)
+        if world_json:
+            world_res_dir = os.path.join(os.path.dirname(world_json), 'resource_packs')
+            os.makedirs(world_res_dir, exist_ok=True)
+            shutil.copy(destination_path, os.path.join(world_res_dir, os.path.basename(destination_path)))
+            logger.info(f"📦 Copiato '{destination_path}' in world resource_packs: {world_res_dir}")
 
         manifest_data = _extract_manifest_from_zip(destination_path)
         if not manifest_data:
@@ -136,10 +170,12 @@ def install_resource_pack_from_file(
         pack_uuid, pack_version, pack_name = _parse_manifest_data(manifest_data, destination_path)
         if not pack_uuid or not pack_version:
             pack_name_fallback = target_filename.replace('.zip', '')
-            logger.warning(f"📄❓ UUID/versione mancanti in {target_filename}. Fallback nome: {pack_name_fallback}")
-            if not pack_name: pack_name = pack_name_fallback
-            if not pack_uuid: raise ResourcePackError(f"UUID mancante in {target_filename}, impossibile attivare.")
-            if not pack_version: pack_version = [0,0,0]
+            if not pack_name_fallback:
+                pack_name_fallback = base
+            if not pack_uuid:
+                raise ResourcePackError(f"UUID mancante in {target_filename}, impossibile attivare.")
+            if not pack_version:
+                pack_version = [0, 0, 0]
 
         return destination_path, pack_uuid, pack_version, pack_name
 
@@ -148,6 +184,7 @@ def install_resource_pack_from_file(
     except Exception as e:
         logger.error(f"🆘 Errore installazione RP '{original_filename}': {e}", exc_info=True)
         raise ResourcePackError(f"Errore installazione pacchetto: {e}")
+
 
 def manage_world_resource_packs_json(
     world_name_target: str,
@@ -169,7 +206,8 @@ def manage_world_resource_packs_json(
         try:
             with open(json_path, 'r', encoding='utf-8') as f:
                 active_packs = json.load(f)
-            if not isinstance(active_packs, list): active_packs = []
+            if not isinstance(active_packs, list):
+                active_packs = []
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"📄⚠️ Errore lettura {json_path}, sarà sovrascritto: {e}")
             active_packs = []
@@ -181,7 +219,8 @@ def manage_world_resource_packs_json(
     if pack_uuid_to_remove:
         original_len = len(active_packs)
         active_packs = [p for p in active_packs if p.get('pack_id') != pack_uuid_to_remove]
-        if len(active_packs) < original_len: modified = True
+        if len(active_packs) < original_len:
+            modified = True
 
     if pack_uuid_to_move and new_index_for_move is not None:
         pack_to_move_data = None
@@ -199,7 +238,6 @@ def manage_world_resource_packs_json(
             modified = True
         else:
             logger.warning(f"📦❓ RP da spostare {pack_uuid_to_move} non attivo.")
-
 
     if pack_uuid_to_add and pack_version_to_add:
         existing_pack_index = -1
@@ -229,7 +267,9 @@ def manage_world_resource_packs_json(
             logger.info(f"💾 {json_path} aggiornato.")
         except IOError as e:
             raise ResourcePackError(f"Impossibile scrivere su {json_path}: {e}")
+
     return active_packs
+
 
 def list_available_packs() -> List[Dict[str, Any]]:
     packs_folder = get_resource_packs_main_folder_path()
@@ -252,13 +292,14 @@ def list_available_packs() -> List[Dict[str, Any]]:
                         "filename": filename
                     })
                 elif pack_uuid:
-                     available_packs.append({
+                    available_packs.append({
                         "uuid": pack_uuid,
-                        "version": version or [0,0,0],
+                        "version": version or [0, 0, 0],
                         "name": name or filename.replace(".zip", ""),
                         "filename": filename
                     })
     return available_packs
+
 
 def get_world_active_packs_with_details(world_name_target: str) -> List[Dict[str, Any]]:
     json_path = get_world_specific_resource_packs_json_path(world_name_target)
