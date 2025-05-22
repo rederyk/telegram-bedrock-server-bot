@@ -1,7 +1,7 @@
 # Minecraft Bedrock Admin Bot
 
 Questo è un bot Telegram progettato per amministrare un server **Minecraft Bedrock Edition** eseguito in Docker.
-Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al server, la gestione di inventario con suggerimenti inline, funzioni interattive come teleport, meteo, distribuzione oggetti, gestione dei backup e aggiunta di resource pack.
+Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al server, la gestione di inventario con suggerimenti inline, funzioni interattive come teleport, meteo, distribuzione oggetti, gestione dei backup e gestione avanzata dei resource pack.
 
 ### ✨ Funzionalità principali
 
@@ -13,6 +13,7 @@ Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al ser
 - 🛡️ Sistema di salvataggio utenti con file `users.json`
 - 💾 Backup del mondo con download opzionale via Telegram
 - 🖼️ Aggiunta di resource pack al mondo tramite file o URL (NUOVO)
+- ⚙️ Modifica dell'ordine di caricamento e rimozione dei resource pack attivi (NUOVO)
 
 ### ⚙️ Requisiti
 
@@ -53,6 +54,7 @@ logs - Sbircia dietro le quinte del server. 👀
 backup_world - Crea un backup del mondo. 💾
 list_backups - Mostra e scarica i backup disponibili. 📂
 addresourcepack - Aggiungi un resource pack al mondo. 🖼️
+editresourcepacks - Modifica i resource pack attivi. 🛠️
 scarica_items - Aggiorna il tuo inventario di meraviglie. ✨
 logout - Esci in punta di piedi. 👋
 login - Entra nel mondo del bot! 🗝️
@@ -86,4 +88,7 @@ Assicurati che i permessi dei file e delle cartelle consentano al bot (eseguito 
 -   **Sicurezza**: Usa una password robusta per `BOT_PASSWORD`.
 -   **`WORLD_NAME`**: Questa variabile è cruciale. Deve corrispondere esattamente al nome della cartella del mondo come appare nel filesystem del server (es. "Bedrock level" o il nome personalizzato che hai dato).
 -   **Permessi Docker**: Il bot necessita dell'accesso al socket Docker (`/var/run/docker.sock`) per gestire i container.
--   **Resource Pack**: Quando aggiungi un resource pack, i giocatori sul server potrebbero aver bisogno di disconnettersi e riconnettersi per vedere le modifiche. Il server Bedrock di solito applica i resource pack attivi ai nuovi client che si connettono.
+-   **Resource Pack**: 
+    - L'ordine di caricamento dei resource pack in Minecraft Bedrock è inverso rispetto a come appaiono nel file `world_resource_packs.json`: il primo pacchetto nella lista ha la priorità più bassa, l'ultimo pacchetto nella lista ha la priorità più alta (viene visualizzato sopra gli altri).
+    - Quando aggiungi un resource pack con `/addresourcepack`, viene messo alla fine della lista (priorità più alta).
+    - Dopo aver aggiunto, rimosso o modificato l'ordine dei resource pack, è fortemente consigliato riavviare il server Minecraft per assicurarsi che le modifiche vengano applicate correttamente a tutti i giocatori. Il bot offrirà di farlo.
