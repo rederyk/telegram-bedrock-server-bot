@@ -22,18 +22,22 @@ def _is_valid_url(url: str) -> bool:
 def _extract_manifest_from_zip(pack_zip_path: str) -> Optional[Dict[str, Any]]:
     try:
         with zipfile.ZipFile(pack_zip_path, 'r') as zf:
-            if 'manifest.json' not in zf.namelist():
-                logger.error(f"📄❓ manifest.json non in {pack_zip_path}")
+            # Cerca un file che finisca con manifest.json ovunque nel pacchetto
+            manifest_path = next((name for name in zf.namelist() if name.endswith('manifest.json')), None)
+            if not manifest_path:
+                logger.error(f"📄❓ manifest.json non trovato in {pack_zip_path}")
                 return None
-            with zf.open('manifest.json') as manifest_file:
+            with zf.open(manifest_path) as manifest_file:
                 return json.load(manifest_file)
     except zipfile.BadZipFile:
         logger.error(f"📦❌ ZIP corrotto/invalido: {pack_zip_path}")
     except json.JSONDecodeError:
-        logger.error(f"📄❌ Errore JSON manifest in {pack_zip_path}")
+        logger.error(f"📄❌ Errore JSON nel manifest di {pack_zip_path}")
     except Exception as e:
         logger.error(f"🆘 Errore estrazione manifest da {pack_zip_path}: {e}", exc_info=True)
     return None
+
+
 
 def _parse_manifest_data(manifest_data: Dict[str, Any], pack_path_for_log: str) -> Tuple[Optional[str], Optional[List[int]], Optional[str]]:
     if not manifest_data:
