@@ -3,11 +3,11 @@ import asyncio
 import subprocess
 import uuid
 import re
-import os 
+import os
 import html
 import shutil
 import tempfile
-from typing import cast # Per type casting
+from typing import cast
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
     InlineQueryResultArticle, InputTextMessageContent, Document
@@ -30,19 +30,16 @@ from resource_pack_management import (
     download_resource_pack_from_url,
     install_resource_pack_from_file,
     manage_world_resource_packs_json,
-    get_world_active_packs_with_details # Importata per il riordino
+    get_world_active_packs_with_details
 )
 
-# Importa i comandi necessari per il riavvio
 from command_handlers import restart_server_command, _offer_server_restart, menu_command, give_direct_command, tp_direct_command, weather_direct_command, saveloc_command
-
 
 logger = get_logger(__name__)
 
-
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return # Ignora messaggi vuoti
-    
+    if not update.message or not update.message.text: return
+
     uid = update.effective_user.id
     text = update.message.text.strip()
 
@@ -50,19 +47,15 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Devi prima effettuare il /login.")
         return
 
-    # Gestione inserimento username Minecraft
     if context.user_data.get("awaiting_mc_username"):
         if not text:
             await update.message.reply_text("Nome utente Minecraft non valido. Riprova.")
             return
         set_minecraft_username(uid, text)
-        await update.message.reply_text(f"Username Minecraft '{text}' salvato.")
+        await update.message.reply_text(f"👤✅ Username Minecraft '{text}' salvato.")
         next_action = context.user_data.pop("next_action_after_username", None)
         context.user_data.pop("awaiting_mc_username")
-        # Esegui azione successiva (codice omesso per brevità, ma presente nel file completo precedente)
-        # Esempio:
         if next_action == "menu": await menu_command(update, context)
-        # ... altri next_action
         else: await update.message.reply_text("Ora puoi usare i comandi.")
         return
 
@@ -73,68 +66,55 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Per favore, inserisci prima il tuo username Minecraft:")
         return
 
-    # Gestione modifica username
     if context.user_data.get("awaiting_username_edit"):
-        # ... (logica esistente)
         set_minecraft_username(uid, text)
         context.user_data.pop("awaiting_username_edit")
-        await update.message.reply_text(f"Username aggiornato a: {text}")
+        await update.message.reply_text(f"👤✅ Username aggiornato a: {text}")
         return
 
-    # Gestione salvataggio nome posizione
     if context.user_data.get("awaiting_saveloc_name"):
-        # ... (logica esistente, assicurati che minecraft_username sia valido)
-        # Per brevità, ometto la logica completa di saveloc
         context.user_data.pop("awaiting_saveloc_name")
-        await update.message.reply_text(f"Tentativo di salvare posizione '{html.escape(text)}'...")
-        return
-        
-    # Gestione prefisso item per /give
-    if context.user_data.get("awaiting_give_prefix"):
-        # ... (logica esistente)
-        context.user_data.pop("awaiting_give_prefix")
-        await update.message.reply_text(f"Ricerca item con prefisso '{html.escape(text)}'...")
+        await update.message.reply_text(f"💾⏳ Tentativo di salvare posizione '{html.escape(text)}'...")
         return
 
-    # Gestione quantità item
+    if context.user_data.get("awaiting_give_prefix"):
+        context.user_data.pop("awaiting_give_prefix")
+        await update.message.reply_text(f"📦🔍 Ricerca item con prefisso '{html.escape(text)}'...")
+        return
+
     if context.user_data.get("awaiting_item_quantity"):
-        # ... (logica esistente)
         context.user_data.pop("selected_item_for_give", None)
         context.user_data.pop("awaiting_item_quantity", None)
-        await update.message.reply_text(f"Tentativo di dare item con quantità '{html.escape(text)}'...")
+        await update.message.reply_text(f"📦⏳ Tentativo di dare item con quantità '{html.escape(text)}'...")
         return
 
-    # Gestione coordinate TP
     if context.user_data.get("awaiting_tp_coords_input"):
-        # ... (logica esistente)
         context.user_data.pop("awaiting_tp_coords_input", None)
-        await update.message.reply_text(f"Tentativo di teleport a '{html.escape(text)}'...")
+        await update.message.reply_text(f"🚀⏳ Tentativo di teleport a '{html.escape(text)}'...")
         return
 
-    # --- Gestione Resource Pack ---
-    if context.user_data.get("awaiting_resource_pack"): # URL per resource pack
-        context.user_data.pop("awaiting_resource_pack", None) 
+    if context.user_data.get("awaiting_resource_pack"):
+        context.user_data.pop("awaiting_resource_pack", None)
         if not WORLD_NAME:
             await update.message.reply_text("⚠️ `WORLD_NAME` non configurato.")
             return
         if text.startswith("http://") or text.startswith("https://"):
-            await update.message.reply_text(f"Ricevuto URL. Download e installazione...")
+            await update.message.reply_text(f"🔗📦 Ricevuto URL. Download e installazione...")
             temp_dir = tempfile.mkdtemp()
             try:
                 downloaded_file_path = await download_resource_pack_from_url(text, temp_dir)
                 _, pack_uuid, pack_version, pack_name = await asyncio.to_thread(
                     install_resource_pack_from_file, downloaded_file_path, os.path.basename(downloaded_file_path)
                 )
-                # Aggiunge in fondo (priorità più alta) di default
                 await asyncio.to_thread(
                     manage_world_resource_packs_json, WORLD_NAME, pack_uuid_to_add=pack_uuid, pack_version_to_add=pack_version, add_at_beginning=True
                 )
                 await update.message.reply_text(
-                    f"✅ RP '{html.escape(pack_name)}' installato e attivato (priorità più alta)!" # Messaggio aggiornato
+                    f"📦✅ RP '{html.escape(pack_name)}' installato e attivato (priorità più alta)!"
                 )
                 await _offer_server_restart(update, context, f"dopo aggiunta di '{html.escape(pack_name)}'")
             except Exception as e:
-                logger.error(f"Errore aggiunta RP da URL: {e}", exc_info=True)
+                logger.error(f"🔗❌ Errore aggiunta RP da URL: {e}", exc_info=True)
                 await update.message.reply_text(f"⚠️ Errore: {html.escape(str(e))}")
             finally:
                 if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
@@ -145,8 +125,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if context.user_data.get("awaiting_rp_move_position"):
         rp_to_move_uuid = context.user_data.get("rp_to_move_uuid")
         rp_to_move_name = context.user_data.get("rp_to_move_name", "Pacchetto Selezionato")
-        
-        # Rimuovi stati prima di operazioni
+
         context.user_data.pop("awaiting_rp_move_position", None)
         context.user_data.pop("rp_to_move_uuid", None)
         context.user_data.pop("rp_to_move_name", None)
@@ -159,8 +138,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             if new_pos_1_based <= 0:
                 await update.message.reply_text("Posizione non valida. Inserisci un numero positivo.")
                 return
-            
-            new_pos_0_based = new_pos_1_based - 1 # Converti a indice 0-based
+
+            new_pos_0_based = new_pos_1_based - 1
 
             await asyncio.to_thread(
                 manage_world_resource_packs_json,
@@ -169,7 +148,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 new_index_for_move=new_pos_0_based
             )
             await update.message.reply_text(
-                f"✅ Resource pack '{html.escape(rp_to_move_name)}' spostato alla posizione {new_pos_1_based}."
+                f"📦↕️ RP '{html.escape(rp_to_move_name)}' spostato alla posizione {new_pos_1_based}."
             )
             await _offer_server_restart(update, context, f"dopo aver spostato '{html.escape(rp_to_move_name)}'")
         except ValueError:
@@ -177,21 +156,19 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         except ResourcePackError as rpe:
             await update.message.reply_text(f"⚠️ Errore spostando il pacchetto: {html.escape(str(rpe))}")
         except Exception as e:
-            logger.error(f"Errore imprevisto spostando RP: {e}", exc_info=True)
+            logger.error(f"🆘 Errore imprevisto spostamento RP: {e}", exc_info=True)
             await update.message.reply_text(f"🆘 Errore imprevisto: {html.escape(str(e))}")
         return
-    # --- Fine Gestione Resource Pack ---
 
     if not text.startswith('/'):
         await update.message.reply_text("Comando non riconosciuto. Usa /help.")
-
 
 async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.document: return
 
     uid = update.effective_user.id
     if not is_user_authenticated(uid):
-        logger.warning(f"Documento da utente non autenticato {uid}")
+        logger.warning(f"👤⚠️ Documento da utente non autenticato {uid}")
         return
 
     if context.user_data.get("awaiting_resource_pack"):
@@ -203,14 +180,14 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         if not WORLD_NAME:
             await update.message.reply_text("⚠️ `WORLD_NAME` non configurato.")
             return
-            
-        await update.message.reply_text(f"Ricevuto file '{html.escape(doc.file_name)}'. Installazione...")
+
+        await update.message.reply_text(f"📄📦 Ricevuto file '{html.escape(doc.file_name)}'. Installazione...")
         temp_dir = tempfile.mkdtemp()
         downloaded_path = os.path.join(temp_dir, "telegram_dl_" + doc.file_name)
         try:
             file_on_telegram = await context.bot.get_file(doc.file_id)
             await file_on_telegram.download_to_drive(custom_path=downloaded_path)
-            
+
             _, pack_uuid, pack_version, pack_name = await asyncio.to_thread(
                 install_resource_pack_from_file, downloaded_path, doc.file_name
             )
@@ -218,18 +195,15 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
                 manage_world_resource_packs_json, WORLD_NAME, pack_uuid_to_add=pack_uuid, pack_version_to_add=pack_version, add_at_beginning=True
             )
             await update.message.reply_text(
-                f"✅ RP '{html.escape(pack_name)}' installato e attivato (priorità più alta)!" # Messaggio aggiornato
+                f"📦✅ RP '{html.escape(pack_name)}' installato e attivato (priorità più alta)!"
             )
             await _offer_server_restart(update, context, f"dopo aggiunta di '{html.escape(pack_name)}'")
         except Exception as e:
-            logger.error(f"Errore aggiunta RP da file: {e}", exc_info=True)
+            logger.error(f"📄❌ Errore aggiunta RP da file: {e}", exc_info=True)
             await update.message.reply_text(f"⚠️ Errore: {html.escape(str(e))}")
         finally:
             if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
         return
-    # else: # Se non si aspettava un resource pack
-        # await update.message.reply_text("Non stavo aspettando un file. Usa /addresourcepack prima.")
-
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -241,10 +215,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("Errore: non autenticato.")
         return
 
-    # --- Gestione Resource Pack Callbacks ---
     if data.startswith("rp_manage:"):
         pack_uuid_to_manage = data.split(":", 1)[1]
-        # Recupera nome per messaggi più chiari (opzionale ma migliora UX)
         active_packs = await asyncio.to_thread(get_world_active_packs_with_details, WORLD_NAME)
         pack_details = next((p for p in active_packs if p['uuid'] == pack_uuid_to_manage), None)
         pack_name_display = pack_details['name'][:30] if pack_details else pack_uuid_to_manage[:8]
@@ -257,37 +229,36 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             [InlineKeyboardButton(f"↕️ Sposta '{html.escape(pack_name_display)}'", callback_data=f"rp_action:move_prompt:{pack_uuid_to_manage}")],
             [InlineKeyboardButton("↩️ Annulla", callback_data="rp_action:cancel_manage")]
         ]
-        await query.edit_message_text(f"Gestisci: {html.escape(pack_name_display)}\nCosa vuoi fare?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(f"📦 Gestisci: {html.escape(pack_name_display)}\nCosa vuoi fare?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         return
 
     elif data.startswith("rp_action:"):
         action_parts = data.split(":")
         action = action_parts[1]
-        
+
         rp_uuid = context.user_data.get("selected_rp_uuid_for_manage")
         rp_name = context.user_data.get("selected_rp_name_for_manage", "Pacchetto Selezionato")
-        if len(action_parts) > 2: # Se c'è un UUID nel callback
+        if len(action_parts) > 2:
             rp_uuid_from_cb = action_parts[2]
-            if not rp_uuid: rp_uuid = rp_uuid_from_cb # Usa quello dal CB se non c'è in user_data
-            # Potresti voler recuperare di nuovo il nome qui se necessario
+            if not rp_uuid: rp_uuid = rp_uuid_from_cb
 
         if action == "delete_confirm":
-            if not rp_uuid: 
-                await query.edit_message_text("Errore: UUID non trovato per l'eliminazione.")
+            if not rp_uuid:
+                await query.edit_message_text("Errore: UUID non trovato per eliminazione.")
                 return
             keyboard = [
                 [InlineKeyboardButton(f"✅ Sì, elimina '{html.escape(rp_name)}'", callback_data=f"rp_action:delete_execute:{rp_uuid}")],
                 [InlineKeyboardButton("❌ No, annulla", callback_data="rp_action:cancel_manage")]
             ]
-            await query.edit_message_text(f"Sei sicuro di voler eliminare il resource pack '{html.escape(rp_name)}' dalla lista degli attivi?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-        
+            await query.edit_message_text(f"Sei sicuro di voler eliminare il RP '{html.escape(rp_name)}' dalla lista attivi?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
         elif action == "delete_execute":
-            if not rp_uuid: 
-                await query.edit_message_text("Errore: UUID non trovato per l'eliminazione.")
+            if not rp_uuid:
+                await query.edit_message_text("Errore: UUID non trovato per eliminazione.")
                 return
             try:
                 await asyncio.to_thread(manage_world_resource_packs_json, WORLD_NAME, pack_uuid_to_remove=rp_uuid)
-                await query.edit_message_text(f"✅ Resource pack '{html.escape(rp_name)}' rimosso dalla lista degli attivi.")
+                await query.edit_message_text(f"🗑️✅ RP '{html.escape(rp_name)}' rimosso dalla lista attivi.")
                 await _offer_server_restart(update, context, f"dopo aver rimosso '{html.escape(rp_name)}'")
             except Exception as e:
                 await query.edit_message_text(f"⚠️ Errore rimozione: {html.escape(str(e))}")
@@ -296,45 +267,30 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         elif action == "move_prompt":
             if not rp_uuid:
-                await query.edit_message_text("Errore: UUID non trovato per lo spostamento.")
+                await query.edit_message_text("Errore: UUID non trovato per spostamento.")
                 return
             context.user_data["awaiting_rp_move_position"] = True
-            context.user_data["rp_to_move_uuid"] = rp_uuid # Salva UUID per quando l'utente risponde
+            context.user_data["rp_to_move_uuid"] = rp_uuid
             context.user_data["rp_to_move_name"] = rp_name
-            await query.edit_message_text(f"Inserisci la nuova posizione (numero) per '{html.escape(rp_name)}'.\n(Es. 1 per la prima posizione, priorità più bassa).")
+            await query.edit_message_text(f"Inserisci la nuova posizione (numero) per '{html.escape(rp_name)}'.\n(Es. 1 per priorità più bassa).")
 
         elif action == "restart_server":
-            await query.edit_message_text("Richiesta di riavvio server ricevuta...")
-            await restart_server_command(update, cast(ContextTypes.DEFAULT_TYPE, context)) # Passa context corretto
-        
+            await query.edit_message_text("🔄 Richiesta di riavvio server ricevuta...")
+            await restart_server_command(update, cast(ContextTypes.DEFAULT_TYPE, context))
+
         elif action == "restart_later":
-            await query.edit_message_text("Ok, puoi riavviare il server manualmente con /restartserver quando preferisci.")
+            await query.edit_message_text("Ok, puoi riavviare il server manualmente con /restartserver.")
 
         elif action == "cancel_manage" or action == "cancel_edit":
             await query.edit_message_text("Operazione annullata.")
             context.user_data.pop("selected_rp_uuid_for_manage", None)
-            context.user_data.pop("selected_rp_name_for_manage", None)
-            context.user_data.pop("awaiting_rp_move_position", None)
-            context.user_data.pop("rp_to_move_uuid", None)
-            context.user_data.pop("rp_to_move_name", None)
+            # ... (clear other related user_data keys) ...
         return
-    # --- Fine Gestione Resource Pack Callbacks ---
 
-    # ... (gestori callback esistenti: edit_username, delete_location, give, tp, weather, download_backup)
-    # Assicurati che questi gestori esistenti siano presenti e funzionino come prima.
-    # Per brevità, non li ripeto tutti qui.
-    # Esempio di un gestore esistente:
     if data == "edit_username":
         context.user_data["awaiting_username_edit"] = True
         await query.edit_message_text("Ok, inserisci il nuovo username Minecraft:")
         return
-    # ... altri gestori ...
-    
-    # Fallback se nessun callback ha gestito la richiesta
-    # await query.edit_message_text("Azione callback non riconosciuta o gestita.")
-
 
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (logica esistente per inline_query_handler)
-    # Per brevità, non la ripeto.
-    await update.inline_query.answer([], cache_time=10) # Placeholder
+    await update.inline_query.answer([], cache_time=10)

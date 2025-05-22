@@ -14,20 +14,22 @@ def load_users():
     try:
         with open(USERS_FILE) as f:
             data = json.load(f)
+            # Converte le chiavi in int poiché JSON le salva come stringhe
             return {int(k): v for k, v in data.items()}
     except Exception as e:
-        logger.error(f"Errore caricamento utenti: {e}")
+        logger.error(f"👤❌ Errore caricamento {USERS_FILE}: {e}")
         return {}
 
-users_data = load_users() # Carica i dati una volta all'avvio
+users_data = load_users()
 authenticated_users = set(users_data)
 
 def save_users():
     try:
         with open(USERS_FILE, "w") as f:
+            # Converte le chiavi int in stringhe per la serializzazione JSON
             json.dump({str(k): v for k, v in users_data.items()}, f, indent=4)
     except Exception as e:
-        logger.error(f"Errore salvataggio utenti: {e}")
+        logger.error(f"👤❌ Errore salvataggio {USERS_FILE}: {e}")
 
 def is_user_authenticated(user_id: int) -> bool:
     return user_id in authenticated_users
@@ -35,9 +37,9 @@ def is_user_authenticated(user_id: int) -> bool:
 def authenticate_user(user_id: int, password: str) -> bool:
     if password == AUTH_PASSWORD:
         authenticated_users.add(user_id)
-        if user_id not in users_data:
+        if user_id not in users_data: # Aggiungi nuovo utente se non esiste
             users_data[user_id] = {"minecraft_username": None, "locations": {}}
-        save_users()
+        save_users() # Salva dopo ogni modifica
         return True
     return False
 
@@ -61,7 +63,7 @@ def get_minecraft_username(user_id: int) -> str | None:
 
 def save_location(user_id: int, loc_name: str, coords: dict):
     if user_id in users_data:
-        if "locations" not in users_data[user_id]:
+        if "locations" not in users_data[user_id]: # Assicura che la chiave esista
             users_data[user_id]["locations"] = {}
         users_data[user_id]["locations"][loc_name] = coords
         save_users()
@@ -70,7 +72,7 @@ def save_location(user_id: int, loc_name: str, coords: dict):
 
 def get_locations(user_id: int) -> dict:
     user = get_user_data(user_id)
-    return user.get("locations", {}) if user else {}
+    return user.get("locations", {}) if user else {} # Restituisce dict vuoto se non ci sono locazioni
 
 def delete_location(user_id: int, loc_name: str) -> bool:
     if user_id in users_data and "locations" in users_data[user_id] and loc_name in users_data[user_id]["locations"]:
@@ -79,6 +81,7 @@ def delete_location(user_id: int, loc_name: str) -> bool:
         return True
     return False
 
+# Decoratore per comandi che richiedono autenticazione
 def auth_required(func):
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):

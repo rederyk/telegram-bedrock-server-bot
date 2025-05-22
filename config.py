@@ -9,7 +9,7 @@ USERS_FILE = "users.json"
 ITEMS_FILE = "items.json"
 CONTAINER = "bds"  # Assicurati che questo sia il nome corretto del tuo container Docker
 WORLD_NAME = os.getenv("WORLD_NAME", "Bedrock level") # Default or from .env
-BACKUPS_DIR_NAME = "backups" # <<< NUOVA RIGA: Nome della sottocartella per i backup
+BACKUPS_DIR_NAME = "backups"
 
 # --- Logging ---
 logging.basicConfig(level=logging.INFO,
@@ -22,8 +22,8 @@ logger = get_logger(__name__)
 
 # Verifica preliminare delle configurazioni essenziali
 if not TOKEN:
-    logger.critical("TELEGRAM_TOKEN non impostato. Il bot non può partire.")
+    logger.critical("🚨 TOKEN Telegram mancante! Il bot non può avviarsi.")
 if not CONTAINER:
-    logger.warning("La variabile CONTAINER non è impostata. Funzionalità server Minecraft limitate.")
+    logger.warning("⚠️  CONTAINER non impostato. Funzionalità server limitate.")
 if not WORLD_NAME:
-    logger.warning("La variabile WORLD_NAME non è impostata. Funzionalità come backup e imnotcreative potrebbero non funzionare.")
+    logger.warning("⚠️  WORLD_NAME non impostato. Funzionalità mondo (backup, RP) limitate.")
