@@ -1,4 +1,4 @@
-# Minecraft Bedrock Admin Bot
+# Telegram Bedrock Server Admin Bot
 
 Questo è un bot Telegram progettato per amministrare un server **Minecraft Bedrock Edition** eseguito in Docker. Offre un'interfaccia comoda per gestire il server, interagire con i giocatori e automatizzare alcune operazioni comuni direttamente da Telegram.
 
