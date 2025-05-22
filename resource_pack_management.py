@@ -234,7 +234,7 @@ def manage_world_resource_packs_json(
             active_packs.pop(current_index)
             target_index = max(0, min(new_index_for_move, len(active_packs)))
             active_packs.insert(target_index, pack_to_move_data)
-            logger.info(f"📦↕️ RP {pack_uuid_to_move} spostato a pos {target_index}.")
+            logger.info(f"📦↕️ RP {pack_uuid_to_move} spostato a pos {target_index}. usa /restartserver per applicare")
             modified = True
         else:
             logger.warning(f"📦❓ RP da spostare {pack_uuid_to_move} non attivo.")

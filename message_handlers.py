@@ -224,16 +224,21 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 pack_uuid_to_move=pack_uuid_to_move,
                 new_index_for_move=new_index
             )
-            await update.message.reply_text(
-                f"✅ Resource pack (<code>{pack_uuid_to_move[:8]}...</code>) spostato alla posizione {new_position}."
+
+            # Log & suggerimento riavvio
+            logger.info(
+                f"Resource pack {pack_uuid_to_move} spostato alla posizione {new_position}; "
+                "ricordati di /restartserver per applicare le modifiche"
             )
-            # Offer server restart
-            from command_handlers import _offer_server_restart
-            await _offer_server_restart(update, context, reason="nella lista attiva")
+            await update.message.reply_text(
+                f"✅ Resource pack (<code>{pack_uuid_to_move[:8]}...</code>) spostato alla posizione {new_position}.\n"
+                "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver",
+                parse_mode=ParseMode.HTML
+            )
 
         except ValueError:
             await update.message.reply_text("Inserisci un numero valido per la posizione.")
-            context.user_data["awaiting_rp_new_position"] = pack_uuid_to_move # Restore if input is invalid
+            context.user_data["awaiting_rp_new_position"] = pack_uuid_to_move  # Restore if input is invalid
         except ResourcePackError as e:
             logger.error(f"📦❌ Errore spostamento RP {pack_uuid_to_move}: {e}")
             await update.message.reply_text(f"❌ Errore spostamento resource pack: {html.escape(str(e))}")
@@ -241,7 +246,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             logger.error(f"🆘 Errore imprevisto spostamento RP {pack_uuid_to_move}: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Errore imprevisto durante lo spostamento: {html.escape(str(e))}")
         return
-
 
     # Gestione coordinate TP
     if context.user_data.get("awaiting_tp_coords_input"):
@@ -521,10 +525,13 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     WORLD_NAME,
                     pack_uuid_to_remove=pack_uuid_to_delete
                 )
-                await query.edit_message_text(f"✅ Resource pack (<code>{pack_uuid_to_delete[:8]}...</code>) eliminato dalla lista attiva.")
-                # Offer server restart
-                from command_handlers import _offer_server_restart
-                await _offer_server_restart(update, context, reason="dalla lista attiva")
+                # Log & suggerimento riavvio
+                logger.info(f"Resource pack {pack_uuid_to_delete} rimosso — ricordati di /restartserver per applicare.")
+                await query.edit_message_text(
+                    f"✅ Resource pack <code>{pack_uuid_to_delete[:8]}...</code> eliminato dalla lista attiva.\n"
+                    "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver",
+                    parse_mode=ParseMode.HTML
+                )
 
             except ResourcePackError as e:
                 logger.error(f"📦❌ Errore eliminazione RP {pack_uuid_to_delete}: {e}")
@@ -612,9 +619,11 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
             )
             logger.info(f"Resource pack {pack_name} ({pack_uuid}) activated for world {WORLD_NAME}.")
 
+            # Log & suggerimento riavvio
+            logger.info(f"Resource pack {pack_uuid} aggiunto — ricordati di /restartserver per applicare.")
             await update.message.reply_text(
-                f"✅ Resource pack '{pack_name}' installato e attivato per il mondo '{WORLD_NAME}'. "
-                "Puoi riavviare il server Minecraft per applicare le modifiche subit con /restartserver ."
+                f"✅ Resource pack '{pack_name}' installato e attivato per il mondo '{WORLD_NAME}'.\n"
+                "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver"
             )
 
     except ResourcePackError as e:
