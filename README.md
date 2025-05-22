@@ -25,3 +25,23 @@ Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al ser
 2. Crea un file `.env` con le variabili `TELEGRAM_TOKEN`, `BOT_PASSWORD`, e `WORLD_NAME`
 3. Avvia il bot con:
 4. aggiungi i comandi rapidi da botfather :
+
+menu - Apri il tuo zaino di azioni rapide! 🎒
+tp - Teletrasportati come un ninja! 💨
+weather - Cambia il meteo... se solo fosse così facile nella vita reale! ☀️🌧️⛈️
+give - Regala un oggetto a un amico (o a te stesso!). 🎁
+saveloc - Ricorda questo posto magico. 📍
+edituser - Modifica il tuo profilo o fai pulizia. ⚙️
+cmd - Sussurra comandi direttamente al server. 🤫
+logs - Sbircia dietro le quinte del server. 👀
+backup_world - Crea un backup del mondo. 💾
+list_backups - Mostra e scarica i backup disponibili. 📂 # <<< NUOVO COMANDO PER BOTFATHER
+scarica_items - Aggiorna il tuo inventario di meraviglie. ✨
+logout - Esci in punta di piedi. 👋
+login - Entra nel mondo del bot! 🗝️
+startserver - Avvia il server Minecraft. ▶️
+stopserver - Ferma il server Minecraft. ⏹️
+restartserver - Riavvia il server Minecraft. 🔄
+imnotcreative - Resetta il flag creativo del mondo. 🛠️
+
+help - Chiedi aiuto all'esperto bot! ❓
