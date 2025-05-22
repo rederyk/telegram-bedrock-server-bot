@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Assicurati che users.json esista, altrimenti crealo
+RUN if [ ! -f /app/users.json ]; then echo "{}" > /app/users.json; fi
+
 VOLUME ["/app/users.json"]
 
 CMD ["python", "bot.py"]
