@@ -31,48 +31,70 @@ from resource_pack_management import (
 
 logger = get_logger(__name__)
 
-async def _offer_server_restart(update: Update, context: ContextTypes.DEFAULT_TYPE, reason: str = ""):
-    message_text = f"Operazione resource pack completata {reason}."
-    message_text += "\nPer applicare le modifiche, puoi usare il comando /restartserver ."
-    message_text += "\nSe preferisci, puoi farlo anche più tardi."
-
-    if update.callback_query and update.callback_query.message:
-        await update.callback_query.message.reply_text(message_text, parse_mode=ParseMode.HTML)
-    elif update.message:
-        await update.message.reply_text(message_text, parse_mode=ParseMode.HTML)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot Minecraft attivo. Usa /login <password> per iniziare.")
+    await update.message.reply_text(
+        "Bot Minecraft attivo. Usa /login <code>password</code> per iniziare."
+    )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "Comandi disponibili:\n\n"
-        "<b>Autenticazione e Utente:</b>\n"
-        "/login &lt;password&gt; - 🔑 Autenticati\n"
-        "/logout - 👋 Esci\n"
-        "/edituser - 👤 Modifica username o cancella posizioni\n"
-        "\n<b>Interazione Server Minecraft:</b>\n"
-        "/menu - 🎒 Menu azioni rapide (give, tp, weather)\n"
-        "/give - 🎁 Dai un oggetto\n"
-        "/tp - 🚀 Teletrasporto\n"
-        "/weather - ☀️ Cambia meteo\n"
-        "/saveloc - 📍 Salva posizione attuale\n"
-        "/cmd &lt;comando&gt; - ⚙️ Esegui comandi console\n"
-        "/logs - 📄 Mostra ultimi log server\n"
-        "\n<b>Gestione Mondo e Server:</b>\n"
-        "/startserver - ▶️ Avvia server\n"
-        "/stopserver - ⏹️ Arresta server\n"
-        "/restartserver - 🔄 Riavvia server\n"
-        "/imnotcreative - 🛠️ Resetta flag creativo mondo\n"
-        "/backup_world - 💾 Crea backup mondo\n"
-        "/list_backups - 📂 Mostra e scarica backup\n"
-        "/addresourcepack - 📦🖼️ Aggiungi resource pack\n"
-        "/editresourcepacks - 📦🛠️ Modifica resource pack attivi\n"
-        "\n<b>Utility Bot:</b>\n"
-        "/scarica_items - ✨ Aggiorna lista oggetti\n\n"
-        "<i>Digita @&lt;nome_bot&gt; + oggetto per suggerimenti inline.</i>"
+        "📖 <b>Minecraft Bedrock Admin Bot</b>\n\n"
+
+        "🔐 <b>Autenticazione & Utente</b>\n"
+        "<b>/login &lt;password&gt;</b> – Accedi al bot\n"
+        "<b>/logout</b> – Esci\n"
+        "<b>/edituser</b> – Modifica username o elimina posizioni\n\n"
+
+        "🎒 <b>Azioni Veloci</b> (<b>/menu</b>)\n"
+        "• <b>/give</b> – Dai un oggetto\n"
+        "• <b>/tp</b> – Teletrasportati\n"
+        "• <b>/weather</b> – Cambia il meteo\n\n"
+
+        "🎁 <b>Gestione Inventario</b>\n"
+        "<b>/give</b> – Seleziona oggetto e quantità\n"
+        "  (supporta ricerca inline: digita <code>@nome_bot</code> + oggetto)\n\n"
+
+        "🚀 <b>Teletrasporto</b>\n"
+        "<b>/tp</b> – Scegli tra giocatori online, coordinate o posizioni\n\n"
+
+        "☀️ <b>Meteo</b>\n"
+        "<b>/weather</b> – Sereno, Pioggia o Temporale\n\n"
+
+        "📍 <b>Salva Posizione</b>\n"
+        "<b>/saveloc</b> – Dai un nome alla tua posizione attuale\n\n"
+
+        "⚙️ <b>Comandi Avanzati</b>\n"
+        "<b>/cmd &lt;comando&gt;</b> – Console server (più righe, # commenti)\n"
+        "<b>/logs</b> – Ultime 50 righe di log\n\n"
+
+        "💾 <b>Backup & Ripristino</b>\n"
+        "<b>/backup_world</b> – Crea backup (.zip), ferma/riprende server\n"
+        "<b>/list_backups</b> – Elenca e scarica gli ultimi 15 backup\n\n"
+
+        "🛠️ <b>Server Control</b>\n"
+        "<b>/startserver</b> – Avvia container Docker\n"
+        "<b>/stopserver</b> – Arresta container Docker\n"
+        "<b>/restartserver</b> – Riavvia container Docker\n\n"
+
+        "🎨 <b>Resource Pack</b>\n"
+        "<b>/addresourcepack</b> – Invia file .zip/.mcpack\n"
+        "<b>/editresourcepacks</b> – Gestisci ordine o elimina pack attivi\n\n"
+
+        "🛠️ <b>Modalità Creativa</b>\n"
+        "<b>/imnotcreative</b> – Resetta flag creativo (richiede conferma)\n\n"
+
+        "✨ <b>Utility</b>\n"
+        "<b>/scarica_items</b> – Aggiorna lista item per <b>/give</b>\n\n"
+
+        "❓ <b>Altri comandi</b>\n"
+        "<b>/start</b> – Messaggio di benvenuto\n"
+        "<b>/help</b> – Questa guida veloce\n\n"
+
+        "<i>Per suggerimenti inline</i>: digita <code>@nome_bot</code> + nome/ID oggetto"
     )
+    logger.info("Invio help completo")
     await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
 
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id

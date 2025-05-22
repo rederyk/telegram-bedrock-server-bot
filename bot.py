@@ -1,4 +1,3 @@
-# minecraft_telegram_bot/bot.py
 import asyncio
 
 from telegram import BotCommand
