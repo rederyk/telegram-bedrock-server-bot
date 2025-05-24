@@ -114,7 +114,7 @@ Ecco una descrizione più dettagliata di ciascun comando disponibile:
 - `/addresourcepack`: Ti chiede di inviare un file `.zip` o `.mcpack` per installarlo come resource pack per il mondo configurato. Il pack verrà aggiunto alla lista attiva con la priorità più alta. Richiede che `WORLD_NAME` sia configurato.
 - `/editresourcepacks`: Mostra la lista dei resource pack attualmente attivi per il mondo configurato. Puoi selezionare un pack per eliminarlo dalla lista attiva o spostarlo per cambiarne la priorità. Richiede che `WORLD_NAME` sia configurato.
 - `/scarica_items`: Aggiorna il file `items.json` scaricando la lista più recente degli oggetti Minecraft. Questo migliora l'accuratezza della ricerca inline e del comando `/give`.
-- `/imnotcreative`: Resetta il flag `im_not_creative` nel file `level.dat` del mondo. Questo è utile se il mondo è bloccato in modalità creativa. **ATTENZIONE:** Questo comando arresterà temporaneamente il server. Richiede conferma prima di procedere. Richiede che `CONTAINER` e `WORLD_NAME` siano configurati.
+- `/imnotcreative`: Resetta il flag `hasLoadedInCreative` nel file `level.dat` del mondo. Questo è utile se il mondo è bloccato in modalità creativa. **ATTENZIONE:** Questo comando arresterà temporaneamente il server. Richiede conferma prima di procedere. Richiede che `CONTAINER` e `WORLD_NAME` siano configurati.
 
 ### 🔍 Ricerca Item Inline
 
