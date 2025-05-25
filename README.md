@@ -99,7 +99,7 @@ BACKUPS_DIR_NAME="backups"           # Directory backup (default: backups)
 LOG_LEVEL="INFO"                     # Livello logging (DEBUG|INFO|WARNING|ERROR|CRITICAL)
 ```
 
-**⚠️ Configurazione Obbligatoria:**
+** 📝 Configurazione Obbligatoria:**
 - **`TELEGRAM_TOKEN`**: Inserisci il token ottenuto da BotFather
 - **`BOT_PASSWORD`**: Scegli una password sicura per l'accesso al bot
 - **`WORLD_NAME`**: Se il tuo mondo non si chiama "Bedrock level", inserisci il nome corretto
@@ -125,41 +125,9 @@ Questi comandi causano **brevi disconnessioni**:
 - `/imnotcreative`: Per modificare file di mondo
 - Riavvii del server per applicare resource pack
 
-### ⚠️ Limitazioni Tecniche
+### 🐌 Limitazioni Tecniche
 - **Download backup**: Limitato a file di dimensioni compatibili con Telegram API
 - **Resource pack**: Modifiche diventano effettive dopo riavvio del server
-
----
-
-## 🔧 Risoluzione Problemi
-
-### Avvio Problematico
-```bash
-# Verifica stato dei container
-docker-compose ps
-
-# Log completi per debugging
-docker-compose logs bot
-docker-compose logs bedrock
-
-# Riavvio pulito
-docker-compose down && docker-compose up --build -d
-```
-
----
-
-## 🤝 Contributi
-
-I contributi sono benvenuti! Per contribuire:
-
-1. **Fork** del repository
-2. **Crea branch** per la feature (`git checkout -b feature/AmazingFeature`)
-3. **Commit** delle modifiche (`git commit -m 'Add some AmazingFeature'`)
-4. **Push** al branch (`git push origin feature/AmazingFeature`)
-5. **Apri Pull Request**
-
-### Segnalazione Bug
-Usa le **Issues** di GitHub per segnalare bug o richiedere nuove funzionalità.
 
 ---
 
