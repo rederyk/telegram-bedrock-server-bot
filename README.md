@@ -99,14 +99,6 @@ BACKUPS_DIR_NAME="backups"           # Directory backup (default: backups)
 LOG_LEVEL="INFO"                     # Livello logging (DEBUG|INFO|WARNING|ERROR|CRITICAL)
 ```
 
-** 📝 Configurazione Obbligatoria:**
-- **`TELEGRAM_TOKEN`**: Inserisci il token ottenuto da BotFather
-- **`BOT_PASSWORD`**: Scegli una password sicura per l'accesso al bot
-- **`WORLD_NAME`**: Se il tuo mondo non si chiama "Bedrock level", inserisci il nome corretto
-
-### 4. Avvio Completo con Docker Compose
-Il bot **richiede** il container del server Minecraft Bedrock per funzionare. Avvia entrambi i servizi:
-
 ```bash
 docker-compose up --build -d
 ```
