@@ -186,15 +186,68 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
             await update.message.reply_text("❌ No output files found after split attempt. Using original file.")
             split_output_files = [current_input_file]
 
+        # Check if files were actually split (more than 1 file or different from original)
+        was_split = len(split_output_files) > 1 or (
+            len(split_output_files) == 1 and 
+            Path(split_output_files[0]).name != Path(current_input_file).name
+        )
 
+        if was_split:
+            # Show the split files to the user and ask what to do
+            files_list = "\n".join([f"• {Path(f).name}" for f in split_output_files])
+            await update.message.reply_text(
+                f"✅ File diviso con successo in {len(split_output_files)} parti:\n\n{files_list}\n\n"
+                "Cosa vuoi fare?"
+            )
+
+            # Store the split files info for later use
+            context.user_data["wizard_split_files"] = split_output_files
+            context.user_data["wizard_processing_dir"] = processing_dir
+
+            # Create buttons for user choice
+            buttons = [
+                [InlineKeyboardButton("📥 Scarica i file divisi", callback_data="wizard_action:download_split")],
+                [InlineKeyboardButton("📦 Procedi con creazione mcpack", callback_data="wizard_action:create_mcpack")]
+            ]
+            reply_markup = InlineKeyboardMarkup(buttons)
+
+            await update.message.reply_text(
+                "Scegli un'opzione:",
+                reply_markup=reply_markup
+            )
+            return  # Wait for user choice
+
+        else:
+            # File was not split, proceed directly with conversion
+            await update.message.reply_text("ℹ️ Il file non è stato diviso (dimensione sotto la soglia). Procedo con la conversione...")
+            await continue_wizard_with_conversion(split_output_files, processing_dir, update, context)
+
+    except Exception as e:
+        logger.error(f"Unhandled error in structure wizard: {e}", exc_info=True)
+        await update.message.reply_text(f"🆘 An critical error occurred in the wizard: {html.escape(str(e))}")
+        try:
+            if 'processing_dir' in locals() and os.path.exists(processing_dir):
+                 shutil.rmtree(processing_dir)
+                 logger.info(f"Cleaned up temporary directory: {processing_dir}")
+        except Exception as cleanup_e:
+            logger.error(f"Error cleaning up temp directory {processing_dir} after error: {cleanup_e}", exc_info=True)
+
+
+async def continue_wizard_with_conversion(split_output_files: list[str], processing_dir: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Continue the wizard with conversion to mcstructure and then mcpack creation."""
+    try:
         # --- Step 2: Conversion to .mcstructure (if needed) ---
-        await update.message.reply_text("🔄 Converting files to .mcstructure format (if necessary)...")
+        reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+        if reply_target:
+            await reply_target.reply_text("🔄 Converting files to .mcstructure format (if necessary)...")
+
         mcstructure_files = []
         for file_to_convert_path in split_output_files:
             if file_to_convert_path.lower().endswith(".mcstructure"):
                 mcstructure_files.append(file_to_convert_path)
                 logger.info(f"File {file_to_convert_path} is already .mcstructure.")
-                await update.message.reply_text(f"ℹ️ {Path(file_to_convert_path).name} is already .mcstructure.")
+                if reply_target:
+                    await reply_target.reply_text(f"ℹ️ {Path(file_to_convert_path).name} is already .mcstructure.")
             elif file_to_convert_path.lower().endswith(".schematic"):
                 convert_command = [PYTHON_AMULET, CONVERT_SCRIPT, file_to_convert_path]
                 convert_result = await _run_script(convert_command, update, context, f"converting {Path(file_to_convert_path).name}", cwd=processing_dir)
@@ -212,13 +265,15 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
                         mcstructure_files.append(str(assumed_mcstructure_path))
                         logger.info(f"Assumed converted file: {assumed_mcstructure_path}")
                     else:
-                        await update.message.reply_text(f"❌ Failed to find/determine .mcstructure output for {Path(file_to_convert_path).name}.")
+                        if reply_target:
+                            await reply_target.reply_text(f"❌ Failed to find/determine .mcstructure output for {Path(file_to_convert_path).name}.")
                         logger.error(f"Could not determine output for {file_to_convert_path} from convert2mc.py stdout: {convert_stdout}")
             else:
                 logger.warning(f"Skipping unknown file type from split: {file_to_convert_path}")
 
         if not mcstructure_files:
-            await update.message.reply_text("❌ No .mcstructure files to process after conversion step.")
+            if reply_target:
+                await reply_target.reply_text("❌ No .mcstructure files to process after conversion step.")
             try:
                 shutil.rmtree(processing_dir)
                 logger.info(f"Cleaned up temporary directory: {processing_dir}")
@@ -227,7 +282,8 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
             return
 
         # --- Step 3: Ask for Opacity ---
-        await update.message.reply_text("🎨 Quale opacità desideri per il resource pack?")
+        if reply_target:
+            await reply_target.reply_text("🎨 Quale opacità desideri per il resource pack?")
 
         context.user_data["awaiting_structura_opacity"] = True
         context.user_data["structura_mcstructure_files"] = mcstructure_files
@@ -240,20 +296,74 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
 
-        await update.message.reply_text(
-            "Scegli un'opacità predefinita o invia un numero tra 1 e 100:",
-            reply_markup=reply_markup
-        )
+        if reply_target:
+            await reply_target.reply_text(
+                "Scegli un'opacità predefinita o invia un numero tra 1 e 100:",
+                reply_markup=reply_markup
+            )
 
     except Exception as e:
-        logger.error(f"Unhandled error in structure wizard: {e}", exc_info=True)
-        await update.message.reply_text(f"🆘 An critical error occurred in the wizard: {html.escape(str(e))}")
+        logger.error(f"Unhandled error in continue_wizard_with_conversion: {e}", exc_info=True)
+        reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+        if reply_target:
+            await reply_target.reply_text(f"🆘 An critical error occurred in the wizard: {html.escape(str(e))}")
         try:
-            if 'processing_dir' in locals() and os.path.exists(processing_dir):
+            if os.path.exists(processing_dir):
                  shutil.rmtree(processing_dir)
                  logger.info(f"Cleaned up temporary directory: {processing_dir}")
         except Exception as cleanup_e:
             logger.error(f"Error cleaning up temp directory {processing_dir} after error: {cleanup_e}", exc_info=True)
+
+
+async def handle_wizard_download_split_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle downloading split files and cleanup."""
+    split_files = context.user_data.pop("wizard_split_files", None)
+    processing_dir = context.user_data.pop("wizard_processing_dir", None)
+
+    if not split_files or not processing_dir or not os.path.exists(processing_dir):
+        logger.error("Wizard download: Missing files or processing directory.")
+        reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+        if reply_target:
+            await reply_target.reply_text(
+                "❌ Errore interno: dati per il download mancanti o scaduti. Riprova caricando di nuovo il file."
+            )
+        return
+
+    reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+    
+    try:
+        if reply_target:
+            await reply_target.reply_text(f"📥 Invio {len(split_files)} file(i)...")
+
+        for file_path in split_files:
+            try:
+                with open(file_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        filename=Path(file_path).name
+                    )
+                logger.info(f"Sent split file {file_path} to user.")
+            except Exception as e:
+                logger.error(f"Error sending split file {file_path}: {e}", exc_info=True)
+                if reply_target:
+                    await reply_target.reply_text(f"⚠️ Could not send file {Path(file_path).name}: {html.escape(str(e))}")
+
+        if reply_target:
+            await reply_target.reply_text("✅ Tutti i file divisi sono stati inviati!")
+
+    except Exception as e:
+        logger.error(f"Unhandled error in handle_wizard_download_split_files: {e}", exc_info=True)
+        if reply_target:
+            await reply_target.reply_text(f"🆘 An error occurred while sending files: {html.escape(str(e))}")
+    finally:
+        # Cleanup
+        try:
+            if os.path.exists(processing_dir):
+                shutil.rmtree(processing_dir)
+                logger.info(f"Cleaned up temporary directory: {processing_dir}")
+        except Exception as e:
+            logger.error(f"Error cleaning up temp directory {processing_dir}: {e}", exc_info=True)
 
 
 async def handle_structura_opacity_input(update: Update, context: ContextTypes.DEFAULT_TYPE, opacity_value: int):
@@ -717,6 +827,24 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text("Errore: non sei autenticato. Usa /login.")
         return
 
+    # Handle wizard actions
+    if data == "wizard_action:download_split":
+        await handle_wizard_download_split_files(update, context)
+        return
+    elif data == "wizard_action:create_mcpack":
+        split_files = context.user_data.pop("wizard_split_files", None)
+        processing_dir = context.user_data.pop("wizard_processing_dir", None)
+        
+        if not split_files or not processing_dir or not os.path.exists(processing_dir):
+            await query.edit_message_text(
+                "❌ Errore interno: dati per la creazione del pacchetto mancanti o scaduti. Riprova caricando di nuovo il file."
+            )
+            return
+        
+        await query.edit_message_text("🔄 Procedo con la creazione degli mcpack...")
+        await continue_wizard_with_conversion(split_files, processing_dir, update, context)
+        return
+
     # Centralized Minecraft username check for most actions
     # Actions that DON'T require username upfront:
     # - edit_username (it's for setting/changing it)
@@ -915,6 +1043,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         elif data.startswith("rp_manage:"):
             pack_uuid = data.split(":", 1)[1]
             try:
+                from resource_pack_management import get_world_active_packs_with_details
                 active_packs_details = await asyncio.to_thread(get_world_active_packs_with_details, WORLD_NAME)
                 pack_details = next(
                     (p for p in active_packs_details if p['uuid'] == pack_uuid), None)
@@ -1092,7 +1221,7 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
             await update.message.reply_text(
                 f"✅ Resource pack '{pack_name}' installato e attivato per il mondo '{WORLD_NAME}'.\n"
                 "ℹ️ Per applicare le modifiche, esegui il comando: /restartserver\n"
-                "ℹ️ Per eliminare vecchie strutture che possono causare rallentamenti, esegui il comando: /editresourcepack"
+                "ℹ️ Per eliminare vecchie strutture che possono causare rallentamenti, esegui il comando: /editresourcepacks"
             )
     except ResourcePackError as e:
         logger.error(
