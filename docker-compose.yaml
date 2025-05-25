@@ -13,7 +13,7 @@ services:
     volumes:
       - ./users.json:/app/users.json
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/bedrockData
+      - ./bds_data:/bedrockData
 
   bedrock:
     image: itzg/minecraft-bedrock-server
@@ -27,7 +27,7 @@ services:
       TZ: "Europe/Rome"
       ENABLE_SSH: "TRUE"
     volumes:
-      - ./data:/data
+      - ./bds_data:/data
     expose:
       # This is a reminder that this port is exposed to other containers in this compose file.
       - 2222

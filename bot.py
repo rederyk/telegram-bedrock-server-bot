@@ -8,18 +8,7 @@ from telegram.ext import (
 
 from config import TOKEN, CONTAINER, logger, WORLD_NAME
 
-from command_handlers import (
-    start, help_command, login, logout, menu_command,
-    logs_command, scarica_items_command, cmd_command,
-    saveloc_command, edituser,
-    give_direct_command, tp_direct_command, weather_direct_command,
-    start_server_command, stop_server_command, restart_server_command,
-    imnotcreative_command,
-    backup_world_command,
-    list_backups_command,
-    add_resourcepack_command,
-    edit_resourcepacks_command
-)
+import command_handlers
 
 from message_handlers import (
     handle_text_message, callback_query_handler, inline_query_handler,
@@ -47,6 +36,9 @@ async def set_bot_commands(application):
         BotCommand("stopserver", "⏹️ Ferma server MC"),
         BotCommand("restartserver", "🔄 Riavvia server MC"),
         BotCommand("imnotcreative", "🛠️ Resetta flag creativo"),
+        BotCommand("split_structure", "✂️ Dividi struttura (.mcstructure/.schematic)"),
+        BotCommand("convert_structure", "🔄 Converti .schematic → .mcstructure"),
+        BotCommand("create_resourcepack", "📦 Crea resource pack da .mcstructure"),
         BotCommand("help", "❓ Aiuto comandi")
     ]
     try:
@@ -81,28 +73,32 @@ def main_sync():
     except Exception as e:
         logger.error(f"🆘 Errore generico set_bot_commands: {e}", exc_info=True)
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("login", login))
-    application.add_handler(CommandHandler("logout", logout))
-    application.add_handler(CommandHandler("menu", menu_command))
-    application.add_handler(CommandHandler("logs", logs_command))
-    application.add_handler(CommandHandler("scarica_items", scarica_items_command))
-    application.add_handler(CommandHandler("cmd", cmd_command))
-    application.add_handler(CommandHandler("saveloc", saveloc_command))
-    application.add_handler(CommandHandler("edituser", edituser))
-    application.add_handler(CommandHandler("give", give_direct_command))
-    application.add_handler(CommandHandler("tp", tp_direct_command))
-    application.add_handler(CommandHandler("weather", weather_direct_command))
+    application.add_handler(CommandHandler("start", command_handlers.start))
+    application.add_handler(CommandHandler("help", command_handlers.help_command))
+    application.add_handler(CommandHandler("login", command_handlers.login))
+    application.add_handler(CommandHandler("logout", command_handlers.logout))
+    application.add_handler(CommandHandler("menu", command_handlers.menu_command))
+    application.add_handler(CommandHandler("logs", command_handlers.logs_command))
+    application.add_handler(CommandHandler("scarica_items", command_handlers.scarica_items_command))
+    application.add_handler(CommandHandler("cmd", command_handlers.cmd_command))
+    application.add_handler(CommandHandler("saveloc", command_handlers.saveloc_command))
+    application.add_handler(CommandHandler("edituser", command_handlers.edituser))
+    application.add_handler(CommandHandler("give", command_handlers.give_direct_command))
+    application.add_handler(CommandHandler("tp", command_handlers.tp_direct_command))
+    application.add_handler(CommandHandler("weather", command_handlers.weather_direct_command))
 
-    application.add_handler(CommandHandler("startserver", start_server_command))
-    application.add_handler(CommandHandler("stopserver", stop_server_command))
-    application.add_handler(CommandHandler("restartserver", restart_server_command))
-    application.add_handler(CommandHandler("imnotcreative", imnotcreative_command))
-    application.add_handler(CommandHandler("backup_world", backup_world_command))
-    application.add_handler(CommandHandler("list_backups", list_backups_command))
-    application.add_handler(CommandHandler("addresourcepack", add_resourcepack_command))
-    application.add_handler(CommandHandler("editresourcepacks", edit_resourcepacks_command))
+    application.add_handler(CommandHandler("startserver", command_handlers.start_server_command))
+    application.add_handler(CommandHandler("stopserver", command_handlers.stop_server_command))
+    application.add_handler(CommandHandler("restartserver", command_handlers.restart_server_command))
+    application.add_handler(CommandHandler("imnotcreative", command_handlers.imnotcreative_command))
+    application.add_handler(CommandHandler("backup_world", command_handlers.backup_world_command))
+    application.add_handler(CommandHandler("list_backups", command_handlers.list_backups_command))
+    application.add_handler(CommandHandler("addresourcepack", command_handlers.add_resourcepack_command))
+    application.add_handler(CommandHandler("editresourcepacks", command_handlers.edit_resourcepacks_command))
+
+    application.add_handler(CommandHandler("split_structure", command_handlers.handle_split_mcstructure))
+    application.add_handler(CommandHandler("convert_structure", command_handlers.handle_convert2mc))
+    application.add_handler(CommandHandler("create_resourcepack", command_handlers.handle_structura_cli))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.add_handler(MessageHandler(filters.Document.ALL & ~filters.COMMAND, handle_document_message))

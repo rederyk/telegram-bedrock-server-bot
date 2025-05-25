@@ -1,0 +1,4 @@
+nbtlib
+numpy
+Pillow
+ujson

@@ -3,4 +3,5 @@ __pycache__/
 users.json
 mc-server/
 data/
+bds_data/
 .env
