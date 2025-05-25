@@ -24,8 +24,11 @@ Supporta l'autenticazione degli utenti, l'invio di comandi personalizzati al ser
 - 🔍 **Ricerca Item Inline:** Cerca oggetti Minecraft direttamente nella chat di Telegram digitando `@nome_bot` seguito dal nome o ID dell'oggetto.
 - 🏗️ **Strumenti per Strutture:**
  🧙 - **Wizard Automatico:** Invia un file `.mcstructure`, `.schematic` o `.schem` per avviare un wizard che ti guida nella divisione, conversione e creazione di resource pack.
+
  ✂️ - **`/split_structure`**: Divide file di struttura (`.mcstructure`/`.schematic`) in parti più piccole.
+ 
  🔄 - **`/convert_structure`**: Converte file `.schematic` in formato `.mcstructure`.
+ 
  📦 - **`/create_resourcepack`**: Crea un resource pack da uno o più file `.mcstructure` utilizzando Structura.
 
 
