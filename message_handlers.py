@@ -143,8 +143,24 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
     logger.info(f"Wizard processing in temp directory: {processing_dir}")
 
     try:
-        current_input_file = os.path.join(processing_dir, original_filename)
+        current_input_filename = original_filename
+        current_input_file = os.path.join(processing_dir, current_input_filename)
         shutil.copy(downloaded_file_path, current_input_file)
+
+        # If the file is .schem, rename it to .schematic for compatibility with scripts
+        if current_input_filename.lower().endswith(".schem"):
+            new_filename = Path(current_input_filename).with_suffix(".schematic").name
+            new_input_file_path = os.path.join(processing_dir, new_filename)
+            os.rename(current_input_file, new_input_file_path)
+            logger.info(f"Renamed .schem file {current_input_filename} to {new_filename} for processing.")
+            current_input_file = new_input_file_path
+            current_input_filename = new_filename
+            await update.message.reply_text(f"ℹ️ Rinomino il file in `{new_filename}` per compatibilità.", parse_mode=ParseMode.MARKDOWN)
+
+        # Store original file info for later use
+        context.user_data["wizard_original_file"] = current_input_file
+        context.user_data["wizard_processing_dir"] = processing_dir
+
 
         # --- Step 1: Splitting ---
         await update.message.reply_text("✂️ Attempting to split the structure...")
@@ -202,12 +218,12 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
 
             # Store the split files info for later use
             context.user_data["wizard_split_files"] = split_output_files
-            context.user_data["wizard_processing_dir"] = processing_dir
 
             # Create buttons for user choice
             buttons = [
                 [InlineKeyboardButton("📥 Scarica i file divisi", callback_data="wizard_action:download_split")],
-                [InlineKeyboardButton("📦 Procedi con creazione mcpack", callback_data="wizard_action:create_mcpack")]
+                [InlineKeyboardButton("📦 Crea mcpack dalle parti divise", callback_data="wizard_action:create_mcpack_split")],
+                [InlineKeyboardButton("📦 Crea mcpack dalla struttura originale", callback_data="wizard_action:create_mcpack_original")]
             ]
             reply_markup = InlineKeyboardMarkup(buttons)
 
@@ -231,6 +247,56 @@ async def process_structure_file_wizard(downloaded_file_path: str, original_file
                  logger.info(f"Cleaned up temporary directory: {processing_dir}")
         except Exception as cleanup_e:
             logger.error(f"Error cleaning up temp directory {processing_dir} after error: {cleanup_e}", exc_info=True)
+
+
+async def handle_wizard_create_mcpack_original(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle creating mcpack from original unsplit file."""
+    original_file = context.user_data.pop("wizard_original_file", None)
+    processing_dir = context.user_data.pop("wizard_processing_dir", None)
+    
+    # Clean up split files data since we're not using them
+    context.user_data.pop("wizard_split_files", None)
+
+    if not original_file or not processing_dir or not os.path.exists(processing_dir):
+        logger.error("Wizard create original mcpack: Missing original file or processing directory.")
+        reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+        if reply_target:
+            await reply_target.reply_text(
+                "❌ Errore interno: file originale mancante o scaduto. Riprova caricando di nuovo il file."
+            )
+        return
+
+    reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+    if reply_target:
+        await reply_target.reply_text("📦 Procedo con la creazione dell'mcpack dalla struttura originale...")
+
+    # Process only the original file
+    await continue_wizard_with_conversion([original_file], processing_dir, update, context)
+
+
+async def handle_wizard_create_mcpack_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle creating mcpack from split files."""
+    split_files = context.user_data.pop("wizard_split_files", None)
+    processing_dir = context.user_data.pop("wizard_processing_dir", None)
+    
+    # Clean up original file data since we're not using it
+    context.user_data.pop("wizard_original_file", None)
+
+    if not split_files or not processing_dir or not os.path.exists(processing_dir):
+        logger.error("Wizard create split mcpack: Missing split files or processing directory.")
+        reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+        if reply_target:
+            await reply_target.reply_text(
+                "❌ Errore interno: file divisi mancanti o scaduti. Riprova caricando di nuovo il file."
+            )
+        return
+
+    reply_target = update.message or (update.callback_query.message if update.callback_query else None)
+    if reply_target:
+        await reply_target.reply_text(f"📦 Procedo con la creazione di {len(split_files)} mcpack dalle parti divise...")
+
+    # Process the split files
+    await continue_wizard_with_conversion(split_files, processing_dir, update, context)
 
 
 async def continue_wizard_with_conversion(split_output_files: list[str], processing_dir: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -319,6 +385,9 @@ async def handle_wizard_download_split_files(update: Update, context: ContextTyp
     """Handle downloading split files and cleanup."""
     split_files = context.user_data.pop("wizard_split_files", None)
     processing_dir = context.user_data.pop("wizard_processing_dir", None)
+    
+    # Clean up original file data since we're downloading splits
+    context.user_data.pop("wizard_original_file", None)
 
     if not split_files or not processing_dir or not os.path.exists(processing_dir):
         logger.error("Wizard download: Missing files or processing directory.")
@@ -333,7 +402,7 @@ async def handle_wizard_download_split_files(update: Update, context: ContextTyp
     
     try:
         if reply_target:
-            await reply_target.reply_text(f"📥 Invio {len(split_files)} file(i)...")
+            await reply_target.reply_text(f"📥 Invio {len(split_files)} file(i) divisi...")
 
         for file_path in split_files:
             try:
@@ -389,9 +458,16 @@ async def handle_structura_opacity_input(update: Update, context: ContextTypes.D
         return
 
     reply_target = update.message or (update.callback_query.message if update.callback_query else None)
-    if reply_target:
-        await reply_target.reply_text(f"📦 Creazione .mcpack con opacità {opacity_value}%...")
+    
+    # Messaggio più specifico in base al numero di file
+    if len(mcstructure_files) == 1:
+        if reply_target:
+            await reply_target.reply_text(f"📦 Creazione mcpack con opacità {opacity_value}%...")
     else:
+        if reply_target:
+            await reply_target.reply_text(f"📦 Creazione di {len(mcstructure_files)} mcpack (uno per ogni parte) con opacità {opacity_value}%...")
+    
+    if not reply_target:
         logger.warning("No reply target found for structura opacity input status update.")
 
 
@@ -831,18 +907,11 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     if data == "wizard_action:download_split":
         await handle_wizard_download_split_files(update, context)
         return
-    elif data == "wizard_action:create_mcpack":
-        split_files = context.user_data.pop("wizard_split_files", None)
-        processing_dir = context.user_data.pop("wizard_processing_dir", None)
-        
-        if not split_files or not processing_dir or not os.path.exists(processing_dir):
-            await query.edit_message_text(
-                "❌ Errore interno: dati per la creazione del pacchetto mancanti o scaduti. Riprova caricando di nuovo il file."
-            )
-            return
-        
-        await query.edit_message_text("🔄 Procedo con la creazione degli mcpack...")
-        await continue_wizard_with_conversion(split_files, processing_dir, update, context)
+    elif data == "wizard_action:create_mcpack_split":
+        await handle_wizard_create_mcpack_split(update, context)
+        return
+    elif data == "wizard_action:create_mcpack_original":
+        await handle_wizard_create_mcpack_original(update, context)
         return
 
     # Centralized Minecraft username check for most actions
@@ -1148,7 +1217,7 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         return
 
     # Check for structure file wizard
-    if original_filename and (original_filename.lower().endswith(".schematic") or original_filename.lower().endswith(".mcstructure")):
+    if original_filename and (original_filename.lower().endswith((".schematic", ".mcstructure", ".schem"))):
         minecraft_username = get_minecraft_username(uid)
         if not minecraft_username:
             context.user_data["awaiting_mc_username"] = True
