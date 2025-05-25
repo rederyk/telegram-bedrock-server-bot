@@ -91,7 +91,7 @@ TELEGRAM_TOKEN="IL_TUO_TOKEN_DA_BOTFATHER"
 BOT_PASSWORD="UNA_PASSWORD_SICURA_A_TUA_SCELTA"
 
 # Configurazione Server Minecraft  
-CONTAINER="bedrock"                   # Nome container (default dal compose)
+CONTAINER="bds"                   # Nome container (default dal compose)
 WORLD_NAME="Bedrock level"           # Nome del tuo mondo (default Minecraft)
 
 # Configurazioni Opzionali
