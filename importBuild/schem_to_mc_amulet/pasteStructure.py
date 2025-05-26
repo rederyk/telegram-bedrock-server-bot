@@ -86,10 +86,10 @@ def calculate_placement_offset(structure_bounds: SelectionBox, target_coords: Tu
     """
     target_x, target_y, target_z = target_coords
     
-    # Calcola il centro della struttura (quello che Amulet usa come riferimento)
-    structure_center_x = (structure_bounds.min_x + structure_bounds.max_x) // 2
-    structure_center_y = (structure_bounds.min_y + structure_bounds.max_y) // 2
-    structure_center_z = (structure_bounds.min_z + structure_bounds.max_z) // 2
+    # CORREZIONE: Usa divisione float per calcolo preciso del centro
+    structure_center_x = (structure_bounds.min_x + structure_bounds.max_x) / 2.0
+    structure_center_y = (structure_bounds.min_y + structure_bounds.max_y) / 2.0
+    structure_center_z = (structure_bounds.min_z + structure_bounds.max_z) / 2.0
     
     logger.info(f"Centro struttura (riferimento Amulet): ({structure_center_x}, {structure_center_y}, {structure_center_z})")
     
@@ -102,40 +102,42 @@ def calculate_placement_offset(structure_bounds: SelectionBox, target_coords: Tu
         offset_from_origin_to_center_y = structure_center_y - structure_bounds.min_y
         offset_from_origin_to_center_z = structure_center_z - structure_bounds.min_z
         
-        paste_x = int(target_x) + offset_from_origin_to_center_x
-        paste_y = int(target_y) + offset_from_origin_to_center_y
-        paste_z = int(target_z) + offset_from_origin_to_center_z
+        paste_x = target_x + offset_from_origin_to_center_x
+        paste_y = target_y + offset_from_origin_to_center_y
+        paste_z = target_z + offset_from_origin_to_center_z
         
         logger.info(f"Modalità: ORIGINE → coordinate target")
         logger.info(f"Vogliamo origine a: ({target_x}, {target_y}, {target_z})")
-        logger.info(f"Offset origine→centro: ({offset_from_origin_to_center_x}, {offset_from_origin_to_center_y}, {offset_from_origin_to_center_z})")
-        logger.info(f"Quindi diciamo ad Amulet di posizionare il centro a: ({paste_x}, {paste_y}, {paste_z})")
+        logger.info(f"Offset origine→centro: ({offset_from_origin_to_center_x:.1f}, {offset_from_origin_to_center_y:.1f}, {offset_from_origin_to_center_z:.1f})")
+        logger.info(f"Quindi diciamo ad Amulet di posizionare il centro a: ({paste_x:.1f}, {paste_y:.1f}, {paste_z:.1f})")
         
     elif placement_mode == "center":
         # Vogliamo che il centro sia alle coordinate target
         # Perfetto, è quello che fa Amulet di default
-        paste_x = int(target_x)
-        paste_y = int(target_y)
-        paste_z = int(target_z)
+        paste_x = target_x
+        paste_y = target_y
+        paste_z = target_z
         
         logger.info(f"Modalità: CENTRO → coordinate target")
         logger.info(f"Posizionamento diretto del centro a: ({target_x}, {target_y}, {target_z})")
         
     elif placement_mode == "bottom_center":
         # Vogliamo centro su XZ, ma origine su Y
-        paste_x = int(target_x)  # Centro su X
-        paste_y = int(target_y) + (structure_center_y - structure_bounds.min_y)  # Origine su Y
-        paste_z = int(target_z)  # Centro su Z
+        paste_x = target_x  # Centro su X
+        paste_y = target_y + (structure_center_y - structure_bounds.min_y)  # Origine su Y
+        paste_z = target_z  # Centro su Z
         
         logger.info(f"Modalità: CENTRO XZ, ORIGINE Y → coordinate target")
-        logger.info(f"Centro XZ, offset Y: {structure_center_y - structure_bounds.min_y}")
+        logger.info(f"Centro XZ, offset Y: {structure_center_y - structure_bounds.min_y:.1f}")
         
     else:
         raise ValueError(f"Modalità posizionamento non valida: {placement_mode}")
     
-    logger.info(f"Coordinate paste per Amulet: ({paste_x}, {paste_y}, {paste_z})")
+    # CORREZIONE: Arrotonda solo alla fine
+    final_coords = (int(round(paste_x)), int(round(paste_y)), int(round(paste_z)))
+    logger.info(f"Coordinate paste per Amulet: {final_coords}")
     
-    return (paste_x, paste_y, paste_z)
+    return final_coords
 
 def place_structure(
     world_path: str,
@@ -238,9 +240,9 @@ def place_structure(
 
     # Fase 5: Esegui il paste
     target_block_coords: BlockCoordinates = (
-        math.floor(paste_coords[0]),
-        math.floor(paste_coords[1]),
-        math.floor(paste_coords[2])
+        paste_coords[0],
+        paste_coords[1],
+        paste_coords[2]
     )
     
     logger.info(f"=== RIEPILOGO PASTE ===")
