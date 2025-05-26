@@ -1,1 +1,2 @@
 amulet-core
+amulet-nbt

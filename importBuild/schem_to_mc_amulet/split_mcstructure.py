@@ -22,8 +22,8 @@ logging.basicConfig(
     format="[%(levelname)s] %(message)s"
 )
 
-DEFAULT_THRESHOLD = 8000
-MIN_CHUNKS_FOR_SPLIT = 8
+DEFAULT_THRESHOLD = 6000
+MIN_CHUNKS_FOR_SPLIT = 4
 AIR_BLOCK = Block("minecraft", "air")
 
 def format_block_count(count: int) -> str:
