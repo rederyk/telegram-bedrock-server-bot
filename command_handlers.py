@@ -7,7 +7,7 @@ import os
 import shutil
 from datetime import datetime
 import tempfile
-from typing import cast
+from typing import cast, Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Document
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
@@ -18,7 +18,7 @@ from world_management import (
 )
 from user_management import (
     auth_required, authenticate_user, logout_user,
-    get_minecraft_username,
+    get_minecraft_username, save_location,
     get_user_data, get_locations
 )
 from item_management import refresh_items, get_items
@@ -63,6 +63,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📍 <b>Salva Posizione</b>\n"
         "<b>/saveloc</b> – Dai un nome alla tua posizione attuale\n\n"
 
+        "🔍 <b>Rilevamento Armor Stand</b>\n"
+        "<b>/detectarmorstand</b> – Rileva posizione e orientamento armor stand\n\n"
+
         "⚙️ <b>Comandi Avanzati</b>\n"
         "<b>/cmd &lt;comando&gt;</b> – Console server (più righe, # commenti)\n"
         "<b>/logs</b> – Ultime 50 righe di log\n\n"
@@ -82,6 +85,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "🛠️ <b>Modalità Creativa</b>\n"
         "<b>/imnotcreative</b> – Resetta flag creativo (richiede conferma)\n\n"
+
+        "🏗️ <b>Strutture e Conversioni</b>\n"
+        "<b>/split_structure &lt;file&gt;</b> – Dividi file struttura se troppo grande\n"
+        "<b>/convert_structure &lt;file&gt;</b> – Converti .schematic in .mcstructure\n"
+        "<b>/create_resourcepack &lt;nome&gt;</b> – Crea resource pack da strutture\n\n"
 
         "✨ <b>Utility</b>\n"
         "<b>/scarica_items</b> – Aggiorna lista item per <b>/give</b>\n\n"
@@ -198,6 +206,13 @@ async def saveloc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data["awaiting_saveloc_name"] = True # type: ignore
     await update.message.reply_text("📍 Nome per la posizione da salvare:")
+
+
+
+
+
+
+
 
 @auth_required
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -712,7 +727,7 @@ async def edit_resourcepacks_command(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("📦ℹ️ Nessun resource pack attivo per questo mondo.")
         return
 
-    message_text = "📦 Resource pack attivi (primo=priorità bassa, ultimo=alta):\n"
+    message_text = "📦 Resource pack attivi (primo=priorità alt, ultimo=bassa):\n"
     buttons = []
     for pack in active_packs_details:
         display_order = pack['order'] + 1
@@ -732,3 +747,223 @@ async def edit_resourcepacks_command(update: Update, context: ContextTypes.DEFAU
         message_text = "📦 Resource pack attivi (lista troppo lunga, vedi bottoni):\n"
 
     await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+# Sistema completo di rilevamento armor stand aggiornato
+# Sostituire le funzioni esistenti con queste versioni
+
+def calculate_distance_3d(pos1: dict, pos2: dict) -> float:
+    """Calcola distanza 3D tra due posizioni"""
+    return ((pos1['x'] - pos2['x'])**2 + (pos1['y'] - pos2['y'])**2 + (pos1['z'] - pos2['z'])**2)**0.5
+
+
+# Rilevamento armor stand - 4 blocchi cardinali, 4 orientamenti precisi
+
+@auth_required
+async def detect_armor_stand_command_improved(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Rileva armor stand nei 4 blocchi cardinali con 4 orientamenti precisi
+    """
+    uid = update.effective_user.id
+    minecraft_username = get_minecraft_username(uid)
+    
+    if not minecraft_username:
+        context.user_data["awaiting_mc_username"] = True
+        context.user_data["next_action_data"] = {"type": "detect_armor_stand", "update": update}
+        await update.message.reply_text("👤 Inserisci il tuo username Minecraft:")
+        return
+    
+    if not CONTAINER:
+        await update.message.reply_text("⚠️ CONTAINER non impostato.")
+        return
+
+    await update.message.reply_text("🔍 **Rilevamento Armor Stand**\nTesto 4 blocchi cardinali...")
+
+    try:
+        detected_stands = await test_cardinal_positions(minecraft_username, update)
+        
+        if not detected_stands:
+            await update.message.reply_text("❌ Nessun armor stand trovato nei 4 blocchi cardinali.")
+            return
+        
+        # Mostra risultati
+        result_text = f"✅ **{len(detected_stands)} Armor Stand Trovati!**\n\n"
+        
+        for i, stand in enumerate(detected_stands, 1):
+            result_text += (
+                f"**{i}. {stand['direction']} - {stand['orientation']}**\n"
+                f"📍 X={stand['x']:.1f}, Y={stand['y']:.1f}, Z={stand['z']:.1f}\n\n"
+            )
+        
+        await update.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
+        
+        # Salva il primo per eventuale uso
+        if detected_stands:
+            best_stand = detected_stands[0]
+            context.user_data["detected_armor_stand"] = {
+                "direction": best_stand['direction'],
+                "orientation": best_stand['orientation'],
+                "armor_stand_coords": {
+                    'x': best_stand['x'],
+                    'y': best_stand['y'],
+                    'z': best_stand['z']
+                }
+            }
+            
+            await update.message.reply_text("💾 Vuoi salvare la posizione? Rispondi con un nome o 'no'.")
+            context.user_data["awaiting_armor_stand_save"] = True
+            
+    except Exception as e:
+        logger.error(f"🔍❌ Errore rilevamento: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Errore: {html.escape(str(e))}")
+
+async def test_cardinal_positions(minecraft_username: str, update: Update) -> list:
+    """
+    Testa i 4 blocchi cardinali per armor stand con 4 orientamenti precisi
+    """
+    detected_stands = []
+    
+    # 4 posizioni cardinali
+    positions = [
+        {"pos": "^ ^ ^1", "dir": "Nord"},
+        {"pos": "^1 ^ ^", "dir": "Est"},
+        {"pos": "^ ^ ^-1", "dir": "Sud"},
+        {"pos": "^-1 ^ ^", "dir": "Ovest"}
+    ]
+    
+    # 4 orientamenti precisi come il tuo comando
+    orientations = [
+        {"range": "rym=0,ry=0", "name": "Nord (0°)"},
+        {"range": "rym=90,ry=90", "name": "Est (90°)"},
+        {"range": "rym=180,ry=180", "name": "Sud (180°)"},
+        {"range": "rym=270,ry=270", "name": "Ovest (270°)"}
+    ]
+    
+    try:
+        for position in positions:
+            await update.message.reply_text(f"🧭 Test: {position['dir']}")
+            
+            for orientation in orientations:
+                # Pulisci log
+                await run_docker_command(["docker", "exec", CONTAINER, "send-command", "say TEST_START"], read_output=False)
+                await asyncio.sleep(0.5)
+                
+                # Comando di test identico al tuo
+                test_cmd = (
+                    f"execute at {minecraft_username} positioned {position['pos']} "
+                    f"if entity @e[type=armor_stand,dx=0,dy=0,dz=0,{orientation['range']}] run "
+                    f"tp {minecraft_username} ~ ~ ~"
+                )
+                
+                await run_docker_command(["docker", "exec", CONTAINER, "send-command", test_cmd], read_output=False)
+                await asyncio.sleep(1.5)
+                
+                # Fine test
+                await run_docker_command(["docker", "exec", CONTAINER, "send-command", "say TEST_END"], read_output=False)
+                await asyncio.sleep(0.5)
+                
+                # Controlla se ha trovato (teleport del player)
+                log_output = await run_docker_command(["docker", "logs", "--tail", "10", CONTAINER], read_output=True, timeout=3)
+                
+                if await check_test_success(log_output, minecraft_username):
+                    # Armor stand trovato! Estrai coordinate
+                    coordinates = await extract_coordinates_from_log(log_output, minecraft_username)
+                    if coordinates:
+                        detected_stands.append({
+                            'x': coordinates['x'],
+                            'y': coordinates['y'],
+                            'z': coordinates['z'],
+                            'direction': position['dir'],
+                            'orientation': orientation['name']
+                        })
+                        
+                        await update.message.reply_text(f"✅ {position['dir']} - {orientation['name']}")
+                        break  # Trovato, passa alla prossima posizione
+        
+        return detected_stands
+        
+    except Exception as e:
+        logger.error(f"Errore test: {e}")
+        return []
+
+async def check_test_success(log_output: str, minecraft_username: str) -> bool:
+    """
+    Controlla se test ha successo (teleport trovato tra TEST_START e TEST_END)
+    """
+    lines = log_output.split('\n')
+    capture = False
+    
+    for line in lines:
+        if "TEST_START" in line:
+            capture = True
+            continue
+        elif "TEST_END" in line:
+            break
+        
+        if capture and "Teleported" in line and minecraft_username in line:
+            return True
+    
+    return False
+
+async def extract_coordinates_from_log(log_output: str, minecraft_username: str) -> dict:
+    """
+    Estrae coordinate dal log di teleport
+    """
+    lines = log_output.split('\n')
+    capture = False
+    
+    for line in lines:
+        if "TEST_START" in line:
+            capture = True
+            continue
+        elif "TEST_END" in line:
+            break
+        
+        if capture and "Teleported" in line and minecraft_username in line:
+            teleport_match = re.search(rf"Teleported {re.escape(minecraft_username)} to ([0-9\.\-]+),?\s*([0-9\.\-]+),?\s*([0-9\.\-]+)", line)
+            if teleport_match:
+                x, y, z = map(float, teleport_match.groups())
+                return {"x": x, "y": y, "z": z}
+    
+    return None
+
+# Versione per hologram
+async def detect_armor_stand_for_hologram_improved_mh(update: Update, context: ContextTypes.DEFAULT_TYPE, minecraft_username: str):
+    """
+    Versione per paste hologram
+    """
+    try:
+        await update.message.reply_text("🔍 Cerco armor stand per hologram...")
+        
+        detected_stands = await test_cardinal_positions(minecraft_username, update)
+        
+        if not detected_stands:
+            await update.message.reply_text("❌ Nessun armor stand trovato.")
+            cleanup_hologram_data(context)
+            return
+        
+        # Usa il primo trovato
+        best_stand = detected_stands[0]
+        await update.message.reply_text(f"✅ Trovato: {best_stand['direction']} - {best_stand['orientation']}")
+        
+        # Procedi con paste
+        await execute_hologram_paste(
+            update, context,
+            {'x': best_stand['x'], 'y': best_stand['y'], 'z': best_stand['z']},
+            best_stand['direction'].lower(),
+            minecraft_username
+        )
+        
+    except Exception as e:
+        logger.error(f"Errore hologram: {e}")
+        await update.message.reply_text(f"❌ Errore: {html.escape(str(e))}")
+        cleanup_hologram_data(context)
+
+def cleanup_hologram_data(context):
+    """Pulisce dati hologram"""
+    keys_to_remove = ["awaiting_hologram_structure", "hologram_structure_path", "hologram_structure_name"]
+    for key in keys_to_remove:
+        context.user_data.pop(key, None)
+
+async def execute_hologram_paste(update, context, armor_stand_coords, direction_code, minecraft_username):
+    """Placeholder - usa la tua implementazione esistente"""
+    await update.message.reply_text(f"🏗️ Paste hologram a {armor_stand_coords['x']:.1f}, {armor_stand_coords['y']:.1f}, {armor_stand_coords['z']:.1f}")

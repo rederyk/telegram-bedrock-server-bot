@@ -10,6 +10,8 @@ from config import TOKEN, CONTAINER, logger, WORLD_NAME
 
 import command_handlers
 
+from command_handlers import detect_armor_stand_command_improved, detect_armor_stand_for_hologram_improved_mh
+
 from message_handlers import (
     handle_text_message, callback_query_handler, inline_query_handler,
     handle_document_message
@@ -86,6 +88,7 @@ def main_sync():
     application.add_handler(CommandHandler("give", command_handlers.give_direct_command))
     application.add_handler(CommandHandler("tp", command_handlers.tp_direct_command))
     application.add_handler(CommandHandler("weather", command_handlers.weather_direct_command))
+    application.add_handler(CommandHandler("detectarmorstand", command_handlers.detect_armor_stand_command_improved))
 
     application.add_handler(CommandHandler("startserver", command_handlers.start_server_command))
     application.add_handler(CommandHandler("stopserver", command_handlers.stop_server_command))
@@ -99,13 +102,14 @@ def main_sync():
     application.add_handler(CommandHandler("split_structure", command_handlers.handle_split_mcstructure))
     application.add_handler(CommandHandler("convert_structure", command_handlers.handle_convert2mc))
     application.add_handler(CommandHandler("create_resourcepack", command_handlers.handle_structura_cli))
-
+    application.add_handler(CommandHandler("pasteHologram", command_handlers.detect_armor_stand_for_hologram_improved_mh))
+    
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.add_handler(MessageHandler(filters.Document.ALL & ~filters.COMMAND, handle_document_message))
     application.add_handler(CallbackQueryHandler(callback_query_handler))
     application.add_handler(InlineQueryHandler(inline_query_handler))
 
-    logger.info("🤖 Bot avviato. In ascolto... 👂")
+    logger.info("🤖 Bot avviato. In ascolto...ben 👂")
     application.run_polling()
 
 if __name__ == "__main__":

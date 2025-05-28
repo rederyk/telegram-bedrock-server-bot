@@ -11,9 +11,13 @@ services:
       - BOT_PASSWORD=${BOT_PASSWORD}
       - WORLD_NAME=${WORLD_NAME}
     volumes:
-      - ./users.json:/app/users.json
+      - ./botData/:/app/botData
+      - ./importBuild/:/app/importBuild
       - /var/run/docker.sock:/var/run/docker.sock
       - ./bds_data:/bedrockData
+      - ./command_handlers.py:/app/command_handlers.py
+      - ./bot.py:/app/bot.py
+
 
   bedrock:
     image: itzg/minecraft-bedrock-server

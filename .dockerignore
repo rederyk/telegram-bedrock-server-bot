@@ -2,5 +2,6 @@ __pycache__/
 *.pyc
 users.json
 mc-server/
-data/
+bds_data/
+#importBuild/
 .env

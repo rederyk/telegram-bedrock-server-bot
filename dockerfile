@@ -13,17 +13,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all project files
 COPY . .
 
+RUN if [ ! -f "botData/users.json" ]; then mv example.users.json botData/users.json; fi
+
 # Setup venv for schem_to_mc_amulet
 WORKDIR /app/importBuild/schem_to_mc_amulet
-RUN rm -rf venv && \
+RUN if [ ! -d "venv" ]; then \
     python -m venv venv && \
-    venv/bin/pip install --no-cache-dir -r requirements.txt
+    venv/bin/pip install --no-cache-dir -r requirements.txt; \
+fi
 
 # Setup venv for Structura
 WORKDIR /app/importBuild/structura_env
-RUN rm -rf venv && \
+RUN if [ ! -d "venv" ]; then \
     python -m venv venv && \
-    venv/bin/pip install --no-cache-dir -r requirementsCLI.txt
+    venv/bin/pip install --no-cache-dir -r requirementsCLI.txt; \
+fi
 
 # Check if Structura is already cloned, if not, clone it
 RUN if [ ! -d "Structura" ]; then git clone https://github.com/RavinMaddHatter/Structura.git; fi
@@ -31,7 +35,7 @@ RUN if [ ! -d "Structura" ]; then git clone https://github.com/RavinMaddHatter/S
 # Return to the main app directory
 WORKDIR /app
 
-# Dichiara il volume per il file (non per la directory)
-VOLUME ["/app"]
+# Dichiara il volume
+#VOLUME ["/app"]
 
 CMD ["python", "bot.py"]
