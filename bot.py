@@ -12,10 +12,11 @@ import command_handlers
 
 from command_handlers import detect_armor_stand_command_improved, detect_armor_stand_for_hologram_improved_mh
 
-from message_handlers import (
-    handle_text_message, callback_query_handler, inline_query_handler,
-    handle_document_message
-)
+# Import handlers from their respective files
+from message_handlers import handle_text_message
+from callback_handlers import callback_query_handler
+from document_handlers import handle_document_message
+from inline_handlers import inline_query_handler
 
 async def set_bot_commands(application):
     commands = [

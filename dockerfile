@@ -36,6 +36,6 @@ RUN if [ ! -d "Structura" ]; then git clone https://github.com/RavinMaddHatter/S
 WORKDIR /app
 
 # Dichiara il volume
-#VOLUME ["/app"]
+VOLUME ["/app"]
 
 CMD ["python", "bot.py"]
