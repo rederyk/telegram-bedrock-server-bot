@@ -253,6 +253,41 @@ async def handle_item_quantity_input(update: Update, context: ContextTypes.DEFAU
              context.user_data.pop("awaiting_item_quantity", None)
 
 
+async def handle_hologram_paste_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handles the confirmation for pasting a hologram."""
+    if context.user_data.get("awaiting_hologram_paste_confirmation"):
+        context.user_data.pop("awaiting_hologram_paste_confirmation", None)
+        hologram_paste_data = context.user_data.pop("hologram_paste_data", None)
+
+        if not hologram_paste_data:
+            await update.message.reply_text("Errore interno: dati per il paste non trovati.")
+            return
+
+        if text.lower() in ["sì", "si", "yes", "conferma"]:
+            try:
+                # Import execute_hologram_paste from hologram_handlers
+                from hologram_handlers import execute_hologram_paste
+                await execute_hologram_paste(
+                    update, context,
+                    hologram_paste_data["armor_stand_coords"],
+                    hologram_paste_data["direction"],
+                    hologram_paste_data["minecraft_username"]
+                )
+            except Exception as e:
+                logger.error(f"Errore durante il paste dell'hologram: {e}", exc_info=True)
+                await update.message.reply_text(f"❌ Errore durante il paste: {html.escape(str(e))}")
+            finally:
+                # Ensure cleanup happens even on error during paste
+                from hologram_handlers import cleanup_hologram_data
+                cleanup_hologram_data(context)
+        else:
+            await update.message.reply_text("Paste annullato.")
+            from hologram_handlers import cleanup_hologram_data
+            cleanup_hologram_data(context)
+        return True # Indicate that this handler processed the message
+    return False # Indicate that this handler did not process the message
+
+
 async def handle_rp_new_position_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     """Handles the input for the new resource pack position."""
     pack_uuid_to_move = context.user_data.pop(

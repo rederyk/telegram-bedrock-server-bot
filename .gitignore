@@ -6,6 +6,7 @@ data/
 bds_data/
 .env
 importBuild/*/venv/
+importBuild/structura_env/Structura/
 importBuild/*/mondoHouse/
 importBuild/*/*.mcstructure
 importBuild/*/*.schematic

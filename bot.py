@@ -8,11 +8,19 @@ from telegram.ext import (
 
 from config import TOKEN, CONTAINER, logger, WORLD_NAME
 
-import command_handlers
-
-from command_handlers import detect_armor_stand_command_improved, detect_armor_stand_for_hologram_improved_mh
-
 # Import handlers from their respective files
+from auth_handlers import start, help_command, login, logout, edituser
+from server_handlers import logs_command, cmd_command, stop_server_command, start_server_command, restart_server_command
+from world_handlers import backup_world_command, list_backups_command, imnotcreative_command
+from quick_action_handlers import menu_command, give_direct_command, tp_direct_command, weather_direct_command
+from item_handlers import scarica_items_command
+from location_handlers import saveloc_command
+from resource_pack_handlers import add_resourcepack_command, edit_resourcepacks_command
+from structure_handlers import handle_split_mcstructure, handle_convert2mc, handle_structura_cli
+# Import for the new pasteHologram entry point
+from hologram_handlers import paste_hologram_command_entry
+
+
 from message_handlers import handle_text_message
 from callback_handlers import callback_query_handler
 from document_handlers import handle_document_message
@@ -42,6 +50,7 @@ async def set_bot_commands(application):
         BotCommand("split_structure", "✂️ Dividi struttura (.mcstructure/.schematic)"),
         BotCommand("convert_structure", "🔄 Converti .schematic → .mcstructure"),
         BotCommand("create_resourcepack", "📦 Crea resource pack da .mcstructure"),
+        BotCommand("pasteHologram", "🏗️ Incolla struttura come ologramma"),
         BotCommand("help", "❓ Aiuto comandi")
     ]
     try:
@@ -76,35 +85,42 @@ def main_sync():
     except Exception as e:
         logger.error(f"🆘 Errore generico set_bot_commands: {e}", exc_info=True)
 
-    application.add_handler(CommandHandler("start", command_handlers.start))
-    application.add_handler(CommandHandler("help", command_handlers.help_command))
-    application.add_handler(CommandHandler("login", command_handlers.login))
-    application.add_handler(CommandHandler("logout", command_handlers.logout))
-    application.add_handler(CommandHandler("menu", command_handlers.menu_command))
-    application.add_handler(CommandHandler("logs", command_handlers.logs_command))
-    application.add_handler(CommandHandler("scarica_items", command_handlers.scarica_items_command))
-    application.add_handler(CommandHandler("cmd", command_handlers.cmd_command))
-    application.add_handler(CommandHandler("saveloc", command_handlers.saveloc_command))
-    application.add_handler(CommandHandler("edituser", command_handlers.edituser))
-    application.add_handler(CommandHandler("give", command_handlers.give_direct_command))
-    application.add_handler(CommandHandler("tp", command_handlers.tp_direct_command))
-    application.add_handler(CommandHandler("weather", command_handlers.weather_direct_command))
-    application.add_handler(CommandHandler("detectarmorstand", command_handlers.detect_armor_stand_command_improved))
+    # Register handlers from new files
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("login", login))
+    application.add_handler(CommandHandler("logout", logout))
+    application.add_handler(CommandHandler("edituser", edituser))
 
-    application.add_handler(CommandHandler("startserver", command_handlers.start_server_command))
-    application.add_handler(CommandHandler("stopserver", command_handlers.stop_server_command))
-    application.add_handler(CommandHandler("restartserver", command_handlers.restart_server_command))
-    application.add_handler(CommandHandler("imnotcreative", command_handlers.imnotcreative_command))
-    application.add_handler(CommandHandler("backup_world", command_handlers.backup_world_command))
-    application.add_handler(CommandHandler("list_backups", command_handlers.list_backups_command))
-    application.add_handler(CommandHandler("addresourcepack", command_handlers.add_resourcepack_command))
-    application.add_handler(CommandHandler("editresourcepacks", command_handlers.edit_resourcepacks_command))
+    application.add_handler(CommandHandler("logs", logs_command))
+    application.add_handler(CommandHandler("cmd", cmd_command))
+    application.add_handler(CommandHandler("startserver", start_server_command))
+    application.add_handler(CommandHandler("stopserver", stop_server_command))
+    application.add_handler(CommandHandler("restartserver", restart_server_command))
 
-    application.add_handler(CommandHandler("split_structure", command_handlers.handle_split_mcstructure))
-    application.add_handler(CommandHandler("convert_structure", command_handlers.handle_convert2mc))
-    application.add_handler(CommandHandler("create_resourcepack", command_handlers.handle_structura_cli))
-    application.add_handler(CommandHandler("pasteHologram", command_handlers.detect_armor_stand_for_hologram_improved_mh))
-    
+    application.add_handler(CommandHandler("backup_world", backup_world_command))
+    application.add_handler(CommandHandler("list_backups", list_backups_command))
+    application.add_handler(CommandHandler("imnotcreative", imnotcreative_command))
+
+    application.add_handler(CommandHandler("menu", menu_command))
+    application.add_handler(CommandHandler("give", give_direct_command))
+    application.add_handler(CommandHandler("tp", tp_direct_command))
+    application.add_handler(CommandHandler("weather", weather_direct_command))
+
+    application.add_handler(CommandHandler("scarica_items", scarica_items_command))
+
+    application.add_handler(CommandHandler("saveloc", saveloc_command))
+
+    application.add_handler(CommandHandler("addresourcepack", add_resourcepack_command))
+    application.add_handler(CommandHandler("editresourcepacks", edit_resourcepacks_command))
+
+    application.add_handler(CommandHandler("split_structure", handle_split_mcstructure))
+    application.add_handler(CommandHandler("convert_structure", handle_convert2mc))
+    application.add_handler(CommandHandler("create_resourcepack", handle_structura_cli))
+
+    # Register the new entry point for pasteHologram
+    application.add_handler(CommandHandler("pasteHologram", paste_hologram_command_entry))
+
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.add_handler(MessageHandler(filters.Document.ALL & ~filters.COMMAND, handle_document_message))
     application.add_handler(CallbackQueryHandler(callback_query_handler))

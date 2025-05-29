@@ -14,12 +14,11 @@ from docker_utils import run_docker_command # Still needed
 from user_input_handlers import (
     handle_username_input, handle_username_edit_input, handle_saveloc_name_input,
     handle_give_prefix_input, handle_item_quantity_input, handle_rp_new_position_input,
-    handle_tp_coords_input
+    handle_tp_coords_input, handle_hologram_paste_confirmation # Import the new handler
 )
 from callback_handlers import callback_query_handler
 from document_handlers import handle_document_message
 from inline_handlers import inline_query_handler
-from hologram_handlers import handle_armor_stand_save # Still needed for direct call from handle_text_message
 
 
 logger = get_logger(__name__)
@@ -42,15 +41,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     # Delegate to user_input_handlers based on state
+
+    # Check for hologram paste confirmation first
+    if await handle_hologram_paste_confirmation(update, context, text):
+        return
+
     if context.user_data.get("awaiting_structura_opacity"):
         # This state is handled by structure_wizard_handlers, but the input comes here.
         # Need to import the handler from structure_wizard_handlers.
         from structure_wizard_handlers import handle_structura_opacity_input
         await handle_structura_opacity_input(update, context, int(text)) # Assuming text is always int here after validation
-        return
-
-    if context.user_data.get("awaiting_armor_stand_save"):
-        await handle_armor_stand_save(update, context, text)
         return
 
     if context.user_data.get("awaiting_mc_username"):
