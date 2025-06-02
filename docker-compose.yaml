@@ -12,16 +12,8 @@ services:
       - WORLD_NAME=${WORLD_NAME}
     volumes:
       - ./botData/:/app/botData
-     # - ./importBuild/:/app/importBuild
       - /var/run/docker.sock:/var/run/docker.sock
       - ./bds_data:/bedrockData
-#      - ./command_handlers.py:/app/command_handlers.py
- #     - ./bot.py:/app/bot.py
- #     - ./auth_handlers.py:/app/auth_handlers.py
-      - ./hologram_handlers.py:/app/hologram_handlers.py
-      - ./armor_stand_handlers.py:/app/armor_stand_handlers.py
-      - ./importBuild/schem_to_mc_amulet/pasteStructure.py:/app/importBuild/schem_to_mc_amulet/pasteStructure.py
-
 
 
 

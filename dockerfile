@@ -16,7 +16,7 @@ COPY . .
 
 RUN wget -O importBuild/lite2Edit/Lite2Edit.jar https://github.com/GoldenDelicios/Lite2Edit/releases/download/v1.2.1/Lite2Edit.jar
 
-RUN if [ ! -f "botData/users.json" ]; then mv example.users.json botData/users.json; fi
+RUN mkdir -p botData && if [ ! -f "botData/users.json" ]; then mv example.users.json botData/users.json; fi
 
 # Setup venv for schem_to_mc_amulet
 WORKDIR /app/importBuild/schem_to_mc_amulet
