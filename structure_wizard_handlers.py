@@ -324,14 +324,26 @@ async def continue_wizard_with_conversion(split_output_files: list[str], process
             else:
                 logger.warning(f"Skipping unknown file type from split: {file_to_convert_path}")
 
-        if not mcstructure_files:
+        # --- Step 2.5: Send mcstructure files ---
+        if mcstructure_files:
             if reply_target:
-                await reply_target.reply_text("❌ No .mcstructure files to process after conversion step.")
-            try:
-                shutil.rmtree(processing_dir)
-                logger.info(f"Cleaned up temporary directory: {processing_dir}")
-            except Exception as e:
-                logger.error(f"Error cleaning up temp directory {processing_dir}: {e}", exc_info=True)
+                await reply_target.reply_text(f"✅ Conversion to .mcstructure complete! Sending {len(mcstructure_files)} file(s)...")
+            for mcstructure_path in mcstructure_files:
+                try:
+                    with open(mcstructure_path, "rb") as f:
+                        await context.bot.send_document(
+                            chat_id=(update.effective_chat.id),
+                            document=f,
+                            filename=Path(mcstructure_path).name
+                        )
+                    logger.info(f"Sent {mcstructure_path} to user.")
+                except Exception as e:
+                    logger.error(f"Error sending file {mcstructure_path}: {e}", exc_info=True)
+                    if reply_target:
+                        await reply_target.reply_text(f"⚠️ Could not send file {Path(mcstructure_path).name}: {html.escape(str(e))}")
+        else:
+            if reply_target:
+                await reply_target.reply_text("❌ No .mcstructure files were generated after conversion.")
             return
 
         # --- Step 3: Ask for Opacity ---

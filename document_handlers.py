@@ -13,6 +13,7 @@ from user_management import is_user_authenticated, get_minecraft_username
 from structure_wizard_handlers import process_structure_file_wizard
 from hologram_handlers import handle_hologram_structure_upload, cleanup_hologram_data # Added cleanup_hologram_data
 from resource_pack_management import install_resource_pack_from_file, manage_world_resource_packs_json, ResourcePackError # Added ResourcePackError
+from importBuild.lite2Edit import litematica_converter
 
 logger = get_logger(__name__)
 
@@ -24,7 +25,7 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         logger.warning("handle_document_message: No message or document found.")
         # update.message might be None if this handler is called incorrectly
         if update.message:
-             await update.message.reply_text("Nessun documento trovato nel messaggio.")
+            await update.message.reply_text("Nessun documento trovato nel messaggio.")
         return
 
     document = update.message.document
@@ -59,6 +60,43 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         else:
             await update.message.reply_text("❌ File non valido. Invia un file .mcstructure, .schematic o .schem")
             return
+
+    # Litematica conversion
+    if original_filename and original_filename.lower().endswith(".litematic"):
+        # Download the file
+        temp_dir = tempfile.mkdtemp(prefix="tgbot_litematica_")
+        downloaded_file_path = os.path.join(temp_dir, original_filename)
+
+        try:
+            new_file = await context.bot.get_file(document.file_id)
+            await new_file.download_to_drive(custom_path=downloaded_file_path)
+            logger.info(f"Litematica file downloaded: {downloaded_file_path}")
+
+            # Convert the file
+            output_dir = temp_dir  # Save the schematic in the same temp dir
+            output_file = litematica_converter.convert_litematica_to_schematic(downloaded_file_path, output_dir)
+
+            if output_file:
+                await update.message.reply_document(
+                    document=open(output_file, 'rb'),
+                    filename=os.path.basename(output_file),
+                    caption="✅ Conversione completata!"
+                )
+                logger.info(f"Litematica file converted to schematic: {output_file}")
+            else:
+                await update.message.reply_text("❌ Conversione fallita.")
+            return
+        except Exception as e:
+            logger.error(f"Error during litematica conversion: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Errore durante la conversione: {html.escape(str(e))}")
+        finally:
+            # Clean up the temporary directory
+            try:
+                shutil.rmtree(temp_dir)
+                logger.info(f"Cleaned up temporary directory: {temp_dir}")
+            except Exception as cleanup_e:
+                logger.error(f"Error cleaning up temporary directory {temp_dir}: {cleanup_e}", exc_info=True)
+        return
 
     # Check for structure file wizard
     if original_filename and (original_filename.lower().endswith((".schematic", ".mcstructure", ".schem"))):

@@ -5,19 +5,23 @@ import logging
 import os
 import math
 import traceback
+import json
+import sys
 
 # Importazioni Amulet
 try:
     import amulet
     from amulet.api.level import World
 except ImportError as e:
-    print(f"Errore: Amulet-Core non trovato: {e}")
-    print("Installa con: pip install amulet-core amulet-nbt")
+    print(f"Errore: Amulet-Core non trovato: {e}", file=sys.stderr)
+    print("Installa con: pip install amulet-core amulet-nbt", file=sys.stderr)
     exit(1)
 
+# Configurazione logging - IMPORTANTE: usa stderr per i log, stdout per i risultati
 logging.basicConfig(
     level=logging.INFO,
-    format="[%(levelname)s] %(message)s"
+    format="INFO - %(message)s",
+    stream=sys.stderr  # Log su stderr
 )
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,7 @@ def get_chunk_coords(world_x, world_z):
     """Converte coordinate mondo in coordinate chunk."""
     chunk_x = int(math.floor(world_x / 16))
     chunk_z = int(math.floor(world_z / 16))
+    logger.debug(f"Chunk coordinates: chunk_x={chunk_x}, chunk_z={chunk_z}")
     return chunk_x, chunk_z
 
 def get_py_repr(tag):
@@ -207,7 +212,7 @@ def explore_chunk(world_path, coordinates_str):
     """Esplora TUTTO in un singolo chunk alle coordinate specificate."""
     coords = parse_coordinates(coordinates_str)
     if not coords:
-        return
+        return []
     
     x_coord, y_coord, z_coord = coords  
     chunk_x, chunk_z = get_chunk_coords(x_coord, z_coord)
@@ -217,33 +222,57 @@ def explore_chunk(world_path, coordinates_str):
     logger.info(f"Coordinate chunk: ({chunk_x}, {chunk_z})")
     logger.info("=" * 40)
     
-    world_obj = None  
+    world_obj = None
+    armor_stands_found = []  # Lista per raccogliere gli armor stand
+    
     try:
         world_obj = amulet.load_level(world_path)
         logger.info(f"Mondo caricato: {world_path}")
         logger.info(f"Tipo mondo: {type(world_obj.level_wrapper)}")
-    except Exception as e:
-        logger.error(f"Errore caricamento mondo: {e}")
+    except amulet.api.errors.LevelDoesNotExist as e:
+        logger.error(f"Errore: Il mondo non esiste nel percorso specificato: {world_path}")
         logger.error(traceback.format_exc())
-        return
+        return []
+    except amulet.api.errors.UnsupportedLevelFormat as e:
+        logger.error(f"Errore: Formato del mondo non supportato: {world_path}")
+        logger.error(traceback.format_exc())
+        return []
+    except Exception as e:
+        logger.error(f"Errore generico durante il caricamento del mondo: {e}")
+        logger.error(traceback.format_exc())
+        return []
     
     try:
         logger.info(f"Dimensioni nel mondo: {world_obj.dimensions}")
         dimension = world_obj.dimensions[0] if world_obj.dimensions else None
         if not dimension:
             logger.error("Nessuna dimensione trovata!")
-            return  
+            return []
             
         logger.info(f"Usando dimensione: {dimension}")
         
         if not world_obj.has_chunk(chunk_x, chunk_z, dimension):
             logger.warning(f"Chunk ({chunk_x}, {chunk_z}) non esiste in dimensione {dimension}!")
-            return  
+            return []
         
-        logger.info(f"✅ Chunk ({chunk_x}, {chunk_z}) esiste")
-        chunk = world_obj.get_chunk(chunk_x, chunk_z, dimension)
-        logger.info(f"✅ Chunk caricato: {type(chunk)}")
-        
+        logger.info(f"✅ Chunk ({chunk_x}, {chunk_z}) esiste nella dimensione {dimension}")
+
+        # Invalidate chunk cache (tentativo)
+        try:
+            if world_obj.has_chunk(chunk_x, chunk_z, dimension):
+                world_obj.unload_chunk(chunk_x, chunk_z, dimension)
+                logger.info(f"✅ Chunk ({chunk_x}, {chunk_z}) scaricato per invalidare la cache")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore durante lo scaricamento del chunk per invalidare la cache: {e}")
+
+        try:
+            chunk = world_obj.get_chunk(chunk_x, chunk_z, dimension)
+            logger.info(f"✅ Chunk caricato: {type(chunk)}")
+        except Exception as e:
+            logger.error(f"❌ Errore durante il caricamento del chunk: {e}")
+            logger.error(traceback.format_exc())
+            return []
+
         logger.info("\n" + "=" * 50)
         logger.info("ANALISI CHUNK")
         logger.info("=" * 50)
@@ -330,10 +359,11 @@ def explore_chunk(world_path, coordinates_str):
                         logger.info(f"  🔧 PROPRIETÀ ARMOR STAND:")
                         
                         # Nome personalizzato
-                        custom_name = ''
+                        custom_name = None
                         if 'CustomName' in nbt_compound:
                             custom_name_tag = nbt_compound['CustomName']
-                            custom_name = get_py_repr(custom_name_tag)
+                            custom_name_raw = get_py_repr(custom_name_tag)
+                            custom_name = custom_name_raw if custom_name_raw else None
                         logger.info(f"    🏷️ Nome: {custom_name if custom_name else '(Nessuno)'}")
 
                         # Invisibilità
@@ -352,8 +382,23 @@ def explore_chunk(world_path, coordinates_str):
 
                         # Analisi posa dettagliata
                         analyze_armor_stand_pose(nbt_compound)
+                        
+                        # Raccogli i dati per l'output JSON
+                        if yaw is not None and entity_pos_val[0] != 'N/A':
+                            direction, _ = yaw_to_direction(yaw)
+                            armor_stand_data = {
+                                "id": "minecraft:armor_stand",
+                                "position": [float(entity_pos_val[0]), float(entity_pos_val[1]), float(entity_pos_val[2])],
+                                "yaw": float(yaw),
+                                "pitch": float(pitch) if pitch is not None else 0.0,
+                                "direction": direction,
+                                "custom_name": custom_name,
+                                "marker": marker,
+                                "invisible": invisible
+                            }
+                            armor_stands_found.append(armor_stand_data)
 
-                    # Altri campi interessanti
+                    # Altri campi interessanti (solo per il log dettagliato)
                     logger.info("  🔍 Altri campi NBT interessanti:")
                     interesting_fields = [
                         'CustomName', 'CustomNameVisible', 'Invisible', 'Marker',  
@@ -377,7 +422,7 @@ def explore_chunk(world_path, coordinates_str):
         else:
             logger.info("\n❌ NESSUNA ENTITÀ TROVATA NEL CHUNK")
         
-        # Informazioni sui blocchi
+        # Informazioni sui blocchi (solo per il log)
         logger.info(f"\n🧱 INFORMAZIONI BLOCCHI:")
         try:
             if hasattr(chunk, 'blocks'): 
@@ -388,13 +433,6 @@ def explore_chunk(world_path, coordinates_str):
                 if hasattr(chunk.block_entities, '__iter__'):
                     be_list = list(chunk.block_entities)  
                 logger.info(f"  📊 Block entities: {type(chunk.block_entities)} ({len(be_list)} elementi)")
-                
-                if be_list:
-                    logger.info(f"  🔸 Prime {min(3, len(be_list))} block entities:")
-                    for i, be in enumerate(be_list[:3]):
-                        be_id = getattr(be, 'id', 'N/A')
-                        be_pos = f"({getattr(be, 'x', '?')},{getattr(be, 'y', '?')},{getattr(be, 'z', '?')})"
-                        logger.info(f"    {i+1}. ID: {be_id}, Pos: {be_pos}")
             
             if hasattr(chunk, 'biomes'): 
                 logger.info(f"  📊 Biomes: {type(chunk.biomes)}")
@@ -408,38 +446,56 @@ def explore_chunk(world_path, coordinates_str):
 
         except Exception as e:
             logger.error(f"  ❌ Errore analisi blocchi: {e}")
-            logger.error(f"  📋 Traceback: {traceback.format_exc()}")
             
     except Exception as e:
         logger.error(f"Errore generale durante l'esplorazione del chunk: {e}")
         logger.error(f"Traceback completo: {traceback.format_exc()}")
     finally:
-        if world_obj:  
+        if world_obj:
             try:
                 world_obj.close()
                 logger.info("✅ Mondo chiuso correttamente")
             except Exception as e_close:
                 logger.error(f"❌ Errore chiusura mondo: {e_close}")
 
+    return armor_stands_found
+
 def main():
+    # Estrai world_path e coordinates da sys.argv
+    if len(sys.argv) < 3:
+        logger.error("❌ Usage: search_armorstand.py world_path x,y,z")
+        print("[]", file=sys.stdout)
+        return
+    
+    world_path = sys.argv[1]
+    coordinates = sys.argv[2]
+
     parser = argparse.ArgumentParser(
-        description="Esplora TUTTO in un chunk Bedrock alle coordinate specificate con analisi rotazione migliorata"
+        description="Esplora TUTTO in un chunk Bedrock alle coordinate specificate con output JSON"
     )
-    parser.add_argument("world_path", help="Percorso cartella mondo Bedrock")
-    parser.add_argument("coordinates", help="Coordinate 'x,y,z'")
+    parser.add_argument("world_path_arg", help="Percorso cartella mondo Bedrock")
     parser.add_argument("--verbose", "-v", action="store_true", help="Output più dettagliato (DEBUG)")
     
-    args = parser.parse_args()
+    args = parser.parse_args([world_path])
     
     if args.verbose:
         logger.setLevel(logging.DEBUG)
         logger.debug("🐛 Logging verboso abilitato")
-    
-    if not os.path.isdir(args.world_path):
-        logger.error(f"❌ Percorso mondo non valido: {args.world_path}")
+
+        # Debug: Esegui script direttamente
+        logger.info("🔧 DEBUG: Eseguendo script direttamente per debug...")
+        logger.info(f"🔧 DEBUG command: {sys.executable} {__file__} {world_path} '\"{coordinates}\"'")
+
+    if not os.path.isdir(world_path):
+        logger.error(f"❌ Percorso mondo non valido: {world_path}")
+        print("[]", file=sys.stdout)  # Output JSON vuoto su stdout
         return
 
-    explore_chunk(args.world_path, args.coordinates)
+    # Esegui l'esplorazione e raccogli i dati
+    armor_stands_data = explore_chunk(world_path, coordinates)
+    
+    # Output JSON pulito su STDOUT per il parsing
+    print(json.dumps(armor_stands_data, indent=2), file=sys.stdout)
 
 if __name__ == "__main__":
     main()

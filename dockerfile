@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # Installa il Docker CLI, i tool di build necessari (gcc, ecc.) e le librerie di sviluppo per leveldb
 RUN apt-get update && \
-    apt-get install -y docker.io build-essential libleveldb-dev zlib1g-dev && \
+    apt-get install -y docker.io build-essential libleveldb-dev zlib1g-dev wget openjdk-17-jre && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -10,8 +10,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+
 # Copy all project files
 COPY . .
+
+RUN wget -O importBuild/lite2Edit/Lite2Edit.jar https://github.com/GoldenDelicios/Lite2Edit/releases/download/v1.2.1/Lite2Edit.jar
 
 RUN if [ ! -f "botData/users.json" ]; then mv example.users.json botData/users.json; fi
 

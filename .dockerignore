@@ -5,3 +5,4 @@ mc-server/
 bds_data/
 #importBuild/
 .env
+importBuild/*/venv/

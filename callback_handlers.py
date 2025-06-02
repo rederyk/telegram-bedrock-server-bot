@@ -355,6 +355,11 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         handle_wizard_download_split_files, handle_wizard_create_mcpack_split,
         handle_wizard_create_mcpack_original, handle_structura_opacity_input
     )
+    # Import hologram handlers
+    from hologram_handlers import (
+        handle_hologram_confirm_paste_callback,
+        handle_hologram_cancel_paste_callback
+    )
 
     if data == "wizard_action:download_split":
         await handle_wizard_download_split_files(update, context)
@@ -492,6 +497,14 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         elif data == "rp_action:cancel_manage" or data == "rp_action:cancel_edit":
             await handle_rp_action_cancel_callback(update, context)
+
+        elif data == "hologram_confirm_paste":
+            await handle_hologram_confirm_paste_callback(update, context)
+            return # Return as this handler manages its own messages
+
+        elif data == "hologram_cancel_paste":
+            await handle_hologram_cancel_paste_callback(update, context)
+            return # Return as this handler manages its own messages
 
         else:
             logger.warning(f"Unhandled callback_query data: {data}")
