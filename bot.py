@@ -18,7 +18,7 @@ from location_handlers import saveloc_command
 from resource_pack_handlers import add_resourcepack_command, edit_resourcepacks_command
 from structure_handlers import handle_split_mcstructure, handle_convert2mc, handle_structura_cli
 # Import for the new pasteHologram entry point
-from hologram_handlers import paste_hologram_command_entry
+#from hologram_handlers import paste_hologram_command_entry
 
 
 from message_handlers import handle_text_message
@@ -50,7 +50,6 @@ async def set_bot_commands(application):
         BotCommand("split_structure", "✂️ Dividi struttura (.mcstructure/.schematic)"),
         BotCommand("convert_structure", "🔄 Converti .schematic → .mcstructure"),
         BotCommand("create_resourcepack", "📦 Crea resource pack da .mcstructure"),
-        BotCommand("pasteHologram", "🏗️ Incolla struttura come ologramma"),
         BotCommand("help", "❓ Aiuto comandi")
     ]
     try:
@@ -94,7 +93,7 @@ def main_sync():
 
     application.add_handler(CommandHandler("logs", logs_command))
     application.add_handler(CommandHandler("cmd", cmd_command))
-    application.add_handler(CommandHandler("startserver", start_server_command))
+    #application.add_handler(CommandHandler("startserver", start_server_command))
     application.add_handler(CommandHandler("stopserver", stop_server_command))
     application.add_handler(CommandHandler("restartserver", restart_server_command))
 
@@ -114,12 +113,13 @@ def main_sync():
     application.add_handler(CommandHandler("addresourcepack", add_resourcepack_command))
     application.add_handler(CommandHandler("editresourcepacks", edit_resourcepacks_command))
 
-    application.add_handler(CommandHandler("split_structure", handle_split_mcstructure))
-    application.add_handler(CommandHandler("convert_structure", handle_convert2mc))
-    application.add_handler(CommandHandler("create_resourcepack", handle_structura_cli))
+    #application.add_handler(CommandHandler("split_structure", handle_split_mcstructure))
+    #application.add_handler(CommandHandler("convert_structure", handle_convert2mc))
+    #application.add_handler(CommandHandler("create_resourcepack", handle_structura_cli))
 
     # Register the new entry point for pasteHologram
-    application.add_handler(CommandHandler("pasteHologram", paste_hologram_command_entry))
+    # This handler is responsible for pasting a structure as a hologram in the Minecraft world.
+    # application.add_handler(CommandHandler("pasteHologram", paste_hologram_command_entry))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.add_handler(MessageHandler(filters.Document.ALL & ~filters.COMMAND, handle_document_message))
