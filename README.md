@@ -7,14 +7,21 @@ Un bot Telegram avanzato per amministrare server **Minecraft Bedrock Edition** t
 ## ✨ Funzionalità
 
 ### 🔐 Autenticazione e Sicurezza
-- **Login sicuro** con password configurabile
+- **Login sicuro** con password configurabile. Diversi livelli di accesso sono disponibili.
 - **Gestione utenti** con associazione username Minecraft
 - **Logout** per terminare la sessione
+
+I livelli di autenticazione sono definiti nel file `config.py`. Quando un utente esegue il login con una password specifica, viene assegnato un livello di autorizzazione corrispondente. Questo livello determina quali comandi può utilizzare.
+
+È possibile creare nuovi livelli di autorizzazione o modificare quelli esistenti direttamente nel file `config.py`, consentendo un controllo granulare sull'accesso ai comandi.
 
 ### 🎮 Gestione Server
 - **Controllo container Docker**: Avvio, arresto e riavvio del server
 - **Monitoraggio log**: Visualizzazione log in tempo reale
 - **Esecuzione comandi**: Invio diretto di comandi alla console server
+- **Avvio Server MC** (`/startserver`): Avvia il server Minecraft
+- **Ferma Server MC** (`/stopserver`): Ferma il server Minecraft
+- **Riavvia Server MC** (`/restartserver`): Riavvia il server Minecraft
 
 ### 🎒 Funzioni Interattive
 - **Menu azioni rapide** (`/menu`): Interface a pulsanti per azioni comuni
@@ -22,10 +29,11 @@ Un bot Telegram avanzato per amministrare server **Minecraft Bedrock Edition** t
 - **Teletrasporto** (`/tp`): Teleport a giocatori, coordinate o posizioni salvate
 - **Controllo meteo** (`/weather`): Modifica condizioni atmosferiche
 - **Salvataggio posizioni** (`/saveloc`): Memorizza località per accesso rapido
+- **Modifica utente/posizioni** (`/edituser`): Modifica utenti e posizioni salvate
 
 ### 💾 Backup e Manutenzione
 - **Backup mondo** (`/backup_world`): Creazione backup compressi
-- **Gestione backup** (`/list_backups`): Lista e download backup esistenti
+- **Gestione backup** (`/list_backups`): Lista, download e ripristino backup esistenti
 - **Reset flag creativo** (`/imnotcreative`): Ragigungi i tuoi obiettivi
 
 ### 📦 Resource Pack
@@ -83,12 +91,31 @@ cp example.users.json users.json
 ```
 
 ### 3. Configurazione Ambiente
-Modifica il file `.env` appena creato:
+
+#### Genera Password
+per comodita  utilizza lo script `generate_passwords.sh` per generare password robuste per i diversi livelli di utente (CUSTOM, BASIC, PLAYER, MODERATOR, ADMIN).
+
+```bash
+./generate_passwords.sh
+```
+
+#### Modifica .env
+Copia il file `example.env` in `.env`:
+
+```bash
+cp example.env .env
+```
+
+Modifica il file `.env` appena creato, inserendo il tuo token Telegram e il nome del tuo mondo Minecraft. Le password per i vari livelli di utente se non sono state generate tramite lo script `generate_passwords.sh`.
 
 ```env
 # Configurazione Bot Telegram
 TELEGRAM_TOKEN="IL_TUO_TOKEN_DA_BOTFATHER"
-BOT_PASSWORD="UNA_PASSWORD_SICURA_A_TUA_SCELTA"
+CUSTOM_PASSWORD="PASSWORD_CUSTOM"
+BASIC_PASSWORD="PASSWORD_BASIC"
+PLAYER_PASSWORD="PASSWORD_PLAYER"
+MODERATOR_PASSWORD="PASSWORD_MODERATOR"
+ADMIN_PASSWORD="PASSWORD_ADMIN"
 
 # Configurazione Server Minecraft  
 CONTAINER="bds"                   # Nome container (default dal compose)
@@ -109,7 +136,7 @@ docker-compose up --build -d
 ### Sicurezza e Permessi
 - Il bot richiede accesso a Docker tramite socket (`/var/run/docker.sock`)
 - L'utente deve avere permessi Docker appropriati
-- La password del bot deve essere mantenuta segreta
+- Le password del bot devono essere mantenute segrete
 
 ### Interruzioni Temporanee del Server
 Questi comandi causano **brevi disconnessioni**:

@@ -4,7 +4,7 @@ import json
 from functools import wraps
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import USERS_FILE, AUTH_PASSWORD, get_logger
+from config import USERS_FILE, get_logger
 
 logger = get_logger(__name__)
 
@@ -34,18 +34,26 @@ def save_users():
 def is_user_authenticated(user_id: int) -> bool:
     return user_id in authenticated_users
 
+from config import AUTH_LEVELS
+
 def authenticate_user(user_id: int, password: str) -> bool:
-    if password == AUTH_PASSWORD:
-        authenticated_users.add(user_id)
-        if user_id not in users_data: # Aggiungi nuovo utente se non esiste
-            users_data[user_id] = {"minecraft_username": None, "locations": {}}
-        save_users() # Salva dopo ogni modifica
-        return True
+    for auth_level, level_data in AUTH_LEVELS.items():
+        if password == level_data["password"]:
+            if user_id not in users_data: # Aggiungi nuovo utente se non esiste
+                users_data[user_id] = {"minecraft_username": None, "locations": {}, "auth_level": auth_level}
+            else:
+                users_data[user_id]["auth_level"] = auth_level
+            authenticated_users.add(user_id)
+            save_users() # Salva dopo ogni modifica
+            logger.info(f"users_data after auth: {users_data}")
+            return True
     return False
 
 def logout_user(user_id: int):
     authenticated_users.discard(user_id)
-    # Non cancelliamo i dati dell'utente da users_data al logout
+    if user_id in users_data:
+        del users_data[user_id]
+        save_users()
 
 def get_user_data(user_id: int) -> dict | None:
     return users_data.get(user_id)
@@ -81,12 +89,31 @@ def delete_location(user_id: int, loc_name: str) -> bool:
         return True
     return False
 
-# Decoratore per comandi che richiedono autenticazione
-def auth_required(func):
-    @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        if not update.effective_user or not is_user_authenticated(update.effective_user.id):
-            await update.message.reply_text("Accesso negato. Usa /login <password>.")
-            return
-        return await func(update, context, *args, **kwargs)
-    return wrapper
+def auth_required(required_permissions):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            user_id = update.effective_user.id if update.effective_user else None
+            if not user_id or not is_user_authenticated(user_id):
+                await update.message.reply_text("Accesso negato. Usa /login <password>.")
+                return
+
+            user_data = get_user_data(user_id)
+            if not user_data or "auth_level" not in user_data:
+                await update.message.reply_text("Accesso negato: livello di autorizzazione insufficiente.")
+                return
+
+            auth_level = user_data["auth_level"]
+            if auth_level not in AUTH_LEVELS:
+                await update.message.reply_text("Accesso negato: livello di autorizzazione non valido.")
+                return
+
+            user_permissions = AUTH_LEVELS[auth_level]["permissions"]
+
+            if "*" not in user_permissions and not all(perm in user_permissions for perm in required_permissions):
+                await update.message.reply_text("Accesso negato: permessi insufficienti.")
+                return
+
+            return await func(update, context, *args, **kwargs)
+        return wrapper
+    return decorator

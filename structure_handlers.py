@@ -14,7 +14,6 @@ from user_management import auth_required
 
 logger = get_logger(__name__)
 
-@auth_required
 async def handle_split_mcstructure(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Utilizzo: /split_structure <percorso_file> [--threshold N] [--axis x|y|z]")
@@ -74,7 +73,6 @@ async def handle_split_mcstructure(update: Update, context: ContextTypes.DEFAULT
         logger.error(f"❌ Errore esecuzione split_mcstructure.py: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Errore generico durante l'esecuzione: {html.escape(str(e))}")
 
-@auth_required
 async def handle_convert2mc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Utilizzo: /convert_structure <percorso_file> [--version X.Y.Z]")
@@ -124,7 +122,6 @@ async def handle_convert2mc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ Errore esecuzione convert2mc.py: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Errore generico durante l'esecuzione: {html.escape(str(e))}")
 
-@auth_required
 async def handle_structura_cli(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(

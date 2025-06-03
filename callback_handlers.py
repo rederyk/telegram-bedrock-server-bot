@@ -483,6 +483,12 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             backup_filename_from_callback = data.split(":", 1)[1]
             await handle_download_backup_callback(update, context, backup_filename_from_callback)
 
+        elif data.startswith("restore_backup_file:"):
+            backup_filename_from_callback = data.split(":", 1)[1]
+            # Import world_handlers locally to avoid circular dependencies
+            from world_handlers import restore_backup_command
+            await restore_backup_command(update, context, backup_filename_from_callback)
+
         elif data.startswith("rp_manage:"):
             pack_uuid = data.split(":", 1)[1]
             await handle_rp_manage_callback(update, context, pack_uuid)

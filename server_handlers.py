@@ -13,7 +13,6 @@ from docker_utils import run_docker_command
 
 logger = get_logger(__name__)
 
-@auth_required
 async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER:
         await update.message.reply_text("⚠️ CONTAINER non impostato.")
@@ -26,7 +25,6 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"📄❌ Errore /logs: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Errore recuperando i log: {html.escape(str(e))}")
 
-@auth_required
 async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER:
         await update.message.reply_text("⚠️ CONTAINER non impostato.")
@@ -66,7 +64,6 @@ async def cmd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"⚙️❌ Errore /cmd '{single_command}': {e}", exc_info=True)
             break
 
-@auth_required
 async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE, quiet: bool = False) -> bool:
     reply_target = update.message or (update.callback_query.message if update.callback_query else None)
     if not CONTAINER:
@@ -82,7 +79,6 @@ async def stop_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not quiet and reply_target: await reply_target.reply_text(f"❌ Errore arresto: {html.escape(str(e))}")
     return False
 
-@auth_required
 async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE, quiet: bool = False) -> bool:
     reply_target = update.message or (update.callback_query.message if update.callback_query else None)
     if not CONTAINER:
@@ -104,7 +100,6 @@ async def start_server_command(update: Update, context: ContextTypes.DEFAULT_TYP
         if not quiet and reply_target: await reply_target.reply_text(f"❌ Errore avvio: {html.escape(str(e))}")
     return False
 
-@auth_required
 async def restart_server_command(update: Update, context: ContextTypes.DEFAULT_TYPE, quiet: bool = False):
     reply_target = update.message or (update.callback_query.message if update.callback_query else None)
     if not CONTAINER:
