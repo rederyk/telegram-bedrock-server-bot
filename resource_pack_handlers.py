@@ -15,7 +15,6 @@ from resource_pack_management import (
 
 logger = get_logger(__name__)
 
-@auth_required
 async def add_resourcepack_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not WORLD_NAME:
         await update.message.reply_text("⚠️ `WORLD_NAME` non impostato. Impossibile aggiungere resource pack.")
@@ -26,7 +25,6 @@ async def add_resourcepack_command(update: Update, context: ContextTypes.DEFAULT
     )
     context.user_data["awaiting_resource_pack"] = True # type: ignore
 
-@auth_required
 async def edit_resourcepacks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not WORLD_NAME:
         await update.message.reply_text("⚠️ `WORLD_NAME` non impostato.")

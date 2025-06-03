@@ -166,15 +166,15 @@ def install_resource_pack_from_file(
         logger.info(f"📦 File '{original_filename}' -> '{destination_path}'")
 
         # copia anche nella cartella del mondo attivo
-        world_json = get_world_specific_resource_packs_json_path(WORLD_NAME)
-        if world_json:
-            world_res_dir = os.path.join(
-                os.path.dirname(world_json), 'resource_packs')
-            os.makedirs(world_res_dir, exist_ok=True)
-            shutil.copy(destination_path, os.path.join(
-                world_res_dir, os.path.basename(destination_path)))
-            logger.info(
-                f"📦 Copiato '{destination_path}' in world resource_packs: {world_res_dir}")
+        # world_json = get_world_specific_resource_packs_json_path(WORLD_NAME)
+        # if world_json:
+        #     world_res_dir = os.path.join(
+        #         os.path.dirname(world_json), 'resource_packs')
+        #     os.makedirs(world_res_dir, exist_ok=True)
+        #     shutil.copy(destination_path, os.path.join(
+        #         world_res_dir, os.path.basename(destination_path)))
+        #     logger.info(
+        #         f"📦 Copiato '{destination_path}' in world resource_packs: {world_res_dir}")
 
         manifest_data = _extract_manifest_from_zip(destination_path)
         if not manifest_data:

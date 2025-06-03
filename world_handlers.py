@@ -4,6 +4,7 @@ import html
 import os
 import shutil
 from datetime import datetime
+import tempfile
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -18,7 +19,6 @@ from server_handlers import stop_server_command, start_server_command # Import f
 
 logger = get_logger(__name__)
 
-@auth_required
 async def backup_world_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER or not WORLD_NAME:
         await update.message.reply_text("⚠️ CONTAINER o WORLD_NAME non configurati.")
@@ -81,7 +81,6 @@ async def _restart_server_after_action(update: Update, context: ContextTypes.DEF
         await reply_target.reply_text(f"🚀❌ Errore (ri)avvio server '{container_name}' dopo {action_name}. Controlla /logs.")
 
 
-@auth_required
 async def list_backups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     backups_dir = get_backups_storage_path()
     if not os.path.exists(backups_dir):
@@ -103,11 +102,23 @@ async def list_backups_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     buttons = []
     for filename in backup_files[:15]:
-        cb_data = f"download_backup_file:{filename}"
-        if len(cb_data.encode('utf-8')) <= 64: # Limite Telegram per callback_data
-            buttons.append([InlineKeyboardButton(f"📥 {filename}", callback_data=cb_data)])
+        cb_data_download = f"download_backup_file:{filename}"
+        cb_data_restore = f"restore_backup_file:{filename}"
+        
+        row_buttons = []
+        
+        if len(cb_data_download.encode('utf-8')) <= 64: # Limite Telegram per callback_data
+            row_buttons.append(InlineKeyboardButton(f"📥 {filename}", callback_data=cb_data_download))
         else:
-            logger.warning(f"💾⚠️ Nome file backup '{filename}' troppo lungo per callback.")
+            logger.warning(f"💾⚠️ Nome file backup '{filename}' troppo lungo per download callback.")
+        
+        if len(cb_data_restore.encode('utf-8')) <= 64: # Limite Telegram per callback_data
+            row_buttons.append(InlineKeyboardButton(f"🔄 {filename}", callback_data=cb_data_restore))
+        else:
+            logger.warning(f"💾⚠️ Nome file backup '{filename}' troppo lungo per download callback.")
+
+        if row_buttons:
+            buttons.append(row_buttons)
 
     if not buttons and backup_files: # Se c'erano file ma nessuno convertibile in bottone
         await update.message.reply_text("📂⚠️ Nomi file backup troppo lunghi per bottoni diretti. Impossibile elencarli.")
@@ -116,9 +127,8 @@ async def list_backups_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("📂ℹ️ Nessun backup disponibile per download via bottoni.")
         return
 
-    await update.message.reply_text("📂 Seleziona backup da scaricare (più recenti prima):", reply_markup=InlineKeyboardMarkup(buttons))
+    await update.message.reply_text("📂 Seleziona backup da scaricare o ripristinare (più recenti prima):", reply_markup=InlineKeyboardMarkup(buttons))
 
-@auth_required
 async def imnotcreative_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not CONTAINER or not WORLD_NAME:
         await update.message.reply_text("⚠️ CONTAINER o WORLD_NAME non configurati.")
@@ -150,3 +160,68 @@ async def imnotcreative_command(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(f"{'✅' if success else '⚠️'} {html.escape(message)}")
 
     await _restart_server_after_action(update, context, CONTAINER, "imnotcreative", "riavvio server post-imnotcreative")
+
+async def restore_backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE, filename: str):
+    message = update.message or update.callback_query.message
+    if not CONTAINER or not WORLD_NAME:
+        await message.reply_text("⚠️ CONTAINER o WORLD_NAME non configurati.")
+        return
+    
+    await message.reply_text(f"🔄⏳ Avvio ripristino backup '{filename}' per '{WORLD_NAME}'...")
+
+    stopped_properly = await stop_server_command(update, context, quiet=True)
+    if not stopped_properly:
+        await message.reply_text("🛑❌ Ripristino annullato: server non arrestato correttamente.")
+        await _restart_server_after_action(update, context, CONTAINER, "restore (errore stop)", "tentativo riavvio post-errore")
+        return
+    await message.reply_text("🛑✅ Server arrestato per ripristino.")
+
+    await message.reply_text("⏳ Attesa rilascio file...")
+    await asyncio.sleep(5)
+
+    world_dir_path = get_world_directory_path(WORLD_NAME)
+    backups_storage = get_backups_storage_path()
+    backup_file_path = os.path.join(backups_storage, filename)
+
+    if not world_dir_path or not os.path.exists(world_dir_path):
+        await message.reply_text(f"🌍❓ Directory mondo '{WORLD_NAME}' non trovata. Ripristino annullato.")
+        await _restart_server_after_action(update, context, CONTAINER, "restore (path non trovato)", "riavvio server")
+        return
+    
+    if not os.path.exists(backup_file_path):
+        await message.reply_text(f"💾❓ File backup '{filename}' non trovato. Ripristino annullato.")
+        await _restart_server_after_action(update, context, CONTAINER, "restore (backup non trovato)", "riavvio server")
+        return
+
+    try:
+        await message.reply_text(f"🔄 Estrazione archivio '{filename}' in area temporanea...")
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp(dir=os.path.dirname(world_dir_path), prefix="restore_temp_")
+        # Extract the backup to the temporary directory
+        shutil.unpack_archive(backup_file_path, temp_dir)
+
+        await message.reply_text(f"🔄 Spostamento mondo ripristinato in posizione originale...")
+        # Remove existing world directory
+        shutil.rmtree(world_dir_path)
+        # Rename the extracted directory to the original world name
+        extracted_path = temp_dir
+        extracted_dir = os.path.join(extracted_path, os.listdir(extracted_path)[0])
+
+        # Check if the extracted directory has the same name as the world directory
+        if os.path.basename(extracted_dir) != os.path.basename(world_dir_path):
+            logger.warning(f"🔄⚠️ La directory estratta '{os.path.basename(extracted_dir)}' non corrisponde al nome del mondo '{os.path.basename(world_dir_path)}'. Tentativo di correzione...")
+            new_extracted_dir = os.path.join(extracted_path, os.path.basename(world_dir_path))
+            os.rename(extracted_dir, new_extracted_dir)
+            extracted_dir = new_extracted_dir
+        os.rename(extracted_dir, world_dir_path)
+
+        # Clean up the temporary directory
+        shutil.rmtree(temp_dir)
+
+        await message.reply_text(f"🔄✅ Ripristino completato da: <code>{html.escape(filename)}</code>", parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        logger.error(f"🔄❌ Errore durante il ripristino del backup '{filename}': {e}", exc_info=True)
+        await message.reply_text(f"❌ Errore durante il ripristino del backup: {html.escape(str(e))}")
+    finally:
+        await _restart_server_after_action(update, context, CONTAINER, "restore", "riavvio server post-restore")

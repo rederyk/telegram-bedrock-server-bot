@@ -7,7 +7,6 @@ from user_management import auth_required, get_minecraft_username
 
 logger = get_logger(__name__)
 
-@auth_required
 async def saveloc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id # type: ignore
     if not get_minecraft_username(uid): # type: ignore

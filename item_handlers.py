@@ -11,7 +11,6 @@ from item_management import refresh_items
 
 logger = get_logger(__name__)
 
-@auth_required
 async def scarica_items_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✨🔄 Avvio aggiornamento lista item...")
     updated_items = await asyncio.to_thread(refresh_items)

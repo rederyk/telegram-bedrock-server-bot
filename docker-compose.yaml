@@ -8,10 +8,15 @@ services:
     restart: unless-stopped
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - BOT_PASSWORD=${BOT_PASSWORD}
       - WORLD_NAME=${WORLD_NAME}
+      - CUSTOM_PASSWORD=${CUSTOM_PASSWORD}
+      - BASIC_PASSWORD=${BASIC_PASSWORD}
+      - PLAYER_PASSWORD=${PLAYER_PASSWORD}
+      - MODERATOR_PASSWORD=${MODERATOR_PASSWORD}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     volumes:
       - ./botData/:/app/botData
+      - ./config.py/:/app/config.py
       - /var/run/docker.sock:/var/run/docker.sock
       - ./bds_data:/bedrockData
 
@@ -34,8 +39,3 @@ services:
     expose:
       # This is a reminder that this port is exposed to other containers in this compose file.
       - 2222
-
-
-
-
-
