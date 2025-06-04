@@ -178,7 +178,7 @@ Questo bot è stato reso possibile grazie al lavoro di molte persone e progetti 
 
 ## 📄 Licenza
 
-Questo progetto è rilasciato sotto **Licenza MIT**. Vedi il file `LICENSE` (non fornito nei file, ma menzionato nel README originale) per i dettagli completi.
+Questo progetto è rilasciato sotto **Licenza MIT**. Vedi il file `LICENSE` 
 
 ---
 
