@@ -164,11 +164,10 @@ Questo bot è stato reso possibile grazie al lavoro di molte persone e progetti 
 * **Amulet Team / Amulet-Core**: Libreria Python per la manipolazione avanzata dei file di mondo e strutture Minecraft.
     * [Amulet-Core ](https://github.com/Amulet-Team/Amulet-Core)
     * [Amulet-Map-Editor ](https://github.com/Amulet-Team/Amulet-Map-Editor)
-* **Structura (FlorianMichael, PORK1ELABS, RyanLXXXVII e contributori)**: Strumento per generare resource pack con anteprime 3D delle strutture.
-    * [Structura ](https://github.com/StructuraFunc/Structura)
-* **Lite2Edit (GoldenDelicios/Creper92yt)**: Strumento (`.jar`) per convertire file `.litematic` in `.schematic`.
+* **Structura: Strumento per generare resource pack con anteprime 3D delle strutture.
+    * [Structura ](https://github.com/RavinMaddHatter/Structura)
+* **Lite2Edit : Strumento (`.jar`) per convertire file `.litematic` in `.schematic`.
     * [Lite2Edit  (Fork GoldenDelicios)](https://github.com/GoldenDelicios/Lite2Edit)
-    * *Nota: Autore originale Creper92yt.*
 * **nbtlib**: Libreria Python per leggere/modificare file NBT (es. `level.dat`).
     * [nbtlib ](https://github.com/vberlier/nbtlib)
 * **Graham Edgecombe**: Per la risorsa degli ID degli oggetti Minecraft.
