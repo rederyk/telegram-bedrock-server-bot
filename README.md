@@ -1,5 +1,5 @@
 ---
-# Telegram Bedrock Server Admin Bot
+# Telegram Bedrock Server  Bot
 
 Un bot Telegram avanzato per amministrare server **Minecraft Bedrock Edition** tramite Docker. Offre un'interfaccia completa per gestire il server, interagire con i giocatori, manipolare file di struttura e molto altro, direttamente da Telegram.
 
@@ -11,7 +11,7 @@ Mettere in funzione il bot è semplice. Segui questi passaggi:
 
 1.  **Clona il Repository:**
     ```bash
-    git clone [https://github.com/rederyk/telegram-bedrock-server-bot.git](https://github.com/rederyk/telegram-bedrock-server-bot.git)
+    git clone https://github.com/rederyk/telegram-bedrock-server-bot.git
     cd telegram-bedrock-server-bot
     ```
 
